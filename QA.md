@@ -11,6 +11,14 @@
 - 브라우저 검사는 별도 CDP page와 실제 번들 frontend 버튼을 사용합니다. pending Worker의 dispose 시 terminate 및 Blob URL 회수를 확인했습니다.
 - 실제 격리 설치 QA 21/21: frontend↔worker RPC, import·편집 자식 저장, 보관함·전체 JSON export 2건, 전체 호스트 재시작 후 유지, chats/generation 권한 회수, disable 시 frontend 제거/backend 중지, 보관 데이터 유지, DB integrity, page errors 0.
 
+## 소스 전용 설치 검증 — 2026-10-15
+
+수정 전 공개 소스의 깨끗한 GitHub clone에서 실제 호스트 `buildExtension()`을 실행하면 성공 반환 뒤에도 backend/frontend 실행 파일이 둘 다 없었습니다. 자동 빌드는 `.ts` 진입점만 탐색하며 별도의 npm build script를 실행하지 않는 것이 원인이었습니다.
+
+TypeScript 진입점을 추가한 수정 후보에서는 dist·node_modules 없는 소스 사본으로 실제 호스트 자동 빌드 후 두 실행 파일의 생성 및 frontend `setup`/backend `install` export를 확인했습니다. 무데이터 격리 호스트의 소스 전용 로컬 scanner 설치 검사 22/22에서 Side 탭 표시·frontend↔backend RPC·저장·전체 JSON 내보내기·전체 호스트 재시작 후 재표시·권한 회수·disable을 통과했습니다. 기존 데이터·유료 모델은 사용하지 않았습니다. 단위 회귀 검사는 28/28 통과했습니다.
+
+이 결과는 수정 후보의 소스 빌드 및 실제 로컬 설치 검증입니다. 수정본의 공개 GitHub URL 신규 설치를 검증한 것으로 확대하지 않습니다.
+
 ## 재현 가능한 합성 검사
 
 - `npm test`: 공개 서비스 경로와 합성 host/model API를 사용한 회귀 검사.
@@ -48,3 +56,4 @@ private 실행 로그와 호스트 자료는 설치 ZIP에 포함하지 않습�
 | 2026-10-14 | 부모 독립 FAIL·재개 경계 기록 |
 | 2026-10-14 | 후속 수정·실제 설치 QA 기록 |
 | 2026-10-15 | 현재 검증·제한 중심 공개 문서 정리 |
+| 2026-10-15 | 소스 전용 설치·자동 빌드 검증 추가 |

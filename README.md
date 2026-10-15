@@ -16,6 +16,12 @@ Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보�
 
 소스 저장소 및 배포 안내: https://github.com/mallang0723/LV-Sidestory
 
+## 소스 설치와 빌드
+
+GitHub 소스 설치는 Lumiverse Spindle의 자동 빌드를 사용합니다. `src/backend.ts`와 `src/frontend.ts`는 기존 JavaScript 구현을 연결하는 진입점이며, 호스트가 manifest에 지정된 `dist/backend.js`와 `dist/frontend.js`를 생성합니다. 저장소에는 생성된 dist를 추적하지 않습니다. ZIP을 직접 만들 때도 `npm run build`가 같은 TypeScript 진입점을 사용합니다.
+
+활성화·권한 허용 후에도 Side 탭이 보이지 않는 경우 설치된 소스에 위 두 `.ts` 파일이 있는지와 서버의 확장 빌드·로딩 로그를 확인하세요. 제거 전에는 결과 JSON을 백업하세요.
+
 기능 제한과 검증 범위는 [QA.md](QA.md), 원저작물 출처와 허가 출처는 [NOTICE.md](NOTICE.md)를 확인하세요. [PolyForm Noncommercial License 1.0.0](LICENSE)에 따라 제공하는 비상업 source-available 소프트웨어입니다. 상업적 이용은 이 라이선스로 허용되지 않습니다.
 
 설치 권한의 `chat_mutation`은 호스트의 대화 메시지 조회 API에 필요하며, 이 확장은 메시지 읽기에만 사용하고 본편 메시지를 수정하지 않습니다. World Book 연결 자동 탐색은 지원하지 않으므로 자료를 직접 선택해야 합니다.
@@ -23,3 +29,9 @@ Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보�
 핵심정보는 구조화 JSON을 검토하고 “핵심정보로 선택”으로 승인한 뒤 AU에 사용합니다. 생성·번역 요청은 호출 전에 durable journal을 기록하며 불명확한 요청을 자동으로 재과금하지 않습니다.
 
 저장 실패 후 같은 런타임의 미취소 요청은 재과금 없이 저장을 재시도할 수 있습니다. 재시작 후 record에 저장되지 않은 journal 결과는 취소 여부를 입증할 수 없어 자동 복원을 거부합니다. 원문 journal은 남지만 수동 복구 UI는 없습니다. 이미 저장된 결과의 재조회는 정상 지원합니다.
+
+## 변경 이력
+
+| 날짜 | 변경 |
+|---|---|
+| 2026-10-15 | 소스 설치용 자동 빌드 진입점 추가 |
