@@ -1,0 +1,23 @@
+import {setup} from '../dist/frontend.js';import {install} from '../dist/backend.js';import {fake} from '../tests/fake.js';
+import {staticHTML,replaceDisplay,excerptPNG} from '../src/presentation.js';
+const f=fake();let backend,frontend;const root=document.querySelector('#root');let frameCount=0;
+f.api.onFrontendMessage=fn=>{backend=fn;return()=>backend=null;};f.api.sendToFrontend=m=>frontend?.(m);
+const ctx={ui:{registerDrawerTab:()=>({root,destroy:()=>root.replaceChildren()})},state:{get:()=>({activeProfileId:'conn'})},events:{on:()=>()=>{}},onBackendMessage:fn=>{frontend=fn;return()=>frontend=null;},sendToBackend:m=>backend?.(m,'fixture-user','fixture-session'),dom:{createSandboxFrame:({html})=>{frameCount++;const element=document.createElement('iframe');element.sandbox='';element.srcdoc=html;return {element,destroy:()=>element.remove()};}}};
+const stopBackend=install(f.api),stopFrontend=setup(ctx);
+const assert=(v,m)=>{if(!v)throw Error(m);};
+const button=s=>[...root.querySelectorAll('button')].find(e=>e.textContent===s);
+const click=async s=>{const b=button(s);b.click();for(let i=0;b.disabled&&i<500;i++)await new Promise(r=>setTimeout(r,10));};
+try{
+ await click('자료 불러오기');root.querySelector('[aria-label="선택 대화 ID (쉼표 구분)"]').value='m1';root.querySelector('[aria-label="요청"]').value='가상 이야기';
+ await click('프롬프트 미리보기');assert(root.querySelector('[data-testid="prompt"]').textContent.includes('synthetic hello'),'actual prompt');await click('확인한 입력으로 생성');
+ assert(root.querySelector('[aria-label="결과 / 편집 초안"]').value==='가짜 모델 결과','generation');
+ root.querySelector('[aria-label="결과 / 편집 초안"]').value='edited';await click('편집을 자식 결과로 저장');await click('보관함 / 인덱스 복구');assert([...f.data.keys()].filter(k=>k.includes(':records/')).length===2,'two records plus separate journal');
+ const cleaned=staticHTML('<h1>safe</h1><script>parent.pwned=1</script><img src="https://invalid.test">');assert(!/<script|<img/.test(cleaned),'sanitization');
+ assert(await replaceDisplay('hello','hello','안녕')==='안녕','worker replacement');let timed=false;try{await replaceDisplay('a'.repeat(30000)+'!','(a+)+$','x',30);}catch(e){timed=e.message==='replacement timeout';}assert(timed,'worker timeout');
+ const png=await excerptPNG('합성 발췌 테스트');assert(png.type==='image/png'&&png.size>0,'PNG');
+ const NativeWorker=window.Worker;let workerStarted=0,workerTerminated=0;const urls=new Set(),createURL=URL.createObjectURL,revokeURL=URL.revokeObjectURL;
+ window.Worker=class extends NativeWorker{constructor(...args){super(...args);workerStarted++;}terminate(){workerTerminated++;return super.terminate();}};
+ URL.createObjectURL=blob=>{const url=createURL.call(URL,blob);urls.add(url);return url;};URL.revokeObjectURL=url=>{urls.delete(url);return revokeURL.call(URL,url);};
+ root.querySelector('[aria-label="표시 치환 정규식"]').value='edited';button('표시에만 치환').click();assert(workerStarted===1,'bundled frontend worker started');stopFrontend();assert(workerTerminated===1&&urls.size===0,'pending bundled worker terminated and URL revoked');window.Worker=NativeWorker;URL.createObjectURL=createURL;URL.revokeObjectURL=revokeURL;stopBackend();assert(!root.children.length,'cleanup');
+ document.querySelector('#qa-result').textContent='PASS: fake-host prompt/generation/edit/storage; HTML escape policy; worker timeout; PNG; cleanup. Real host NOT tested.';
+}catch(e){document.querySelector('#qa-result').textContent='FAIL: '+e.stack;stopFrontend();stopBackend();}

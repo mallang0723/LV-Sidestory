@@ -1,0 +1,108 @@
+{
+  "repository": "https://github.com/f-en-rep/ST-Sidestory",
+  "sha": "252fd07ebbb8e134d1e312f9aab034117ce03a95",
+  "version": "0.9.8",
+  "author": "Byulchaek contributors",
+  "files": [
+    {
+      "path": "src/compact.js",
+      "sha256": "7556ddb4abee91d137f0cd3aa1283767c3dea1746a41b4764c577b9cf6cc0242",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/composer.js",
+      "sha256": "75ffa6d7460c221f883f65ce0907936033248c3e3eb051ffb5781ce365b309e0",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/core.js",
+      "sha256": "09a50e3224db7ac554ecda8f64ef7b4709f05fbeda7cac257851a891ab765c9f",
+      "use": "adapted: COMMON/INNER_BASE/PROMPTS extraction; visual policy overridden"
+    },
+    {
+      "path": "src/design.js",
+      "sha256": "13bb344f3e262ec0b57609f164665771f00a7f11cffabe23ef94bfea1431c474",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/enhancements.js",
+      "sha256": "45429d05b21385f9fc03ba2d10cbc28024cd4d991ce94286f442c01890d57868",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/excerpt.js",
+      "sha256": "834966c4d63685287729b1a0702629bf6810aba1510e160d2a2c76c831212e88",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/extension.js",
+      "sha256": "889d640235aaf256990d2e6b3e77185ea57ac8af95396b8a2d4eac462193c272",
+      "use": "adapted: ST backup kind/version envelope; core.js backup record validation and bounded transform; archival metadata retained detached"
+    },
+    {
+      "path": "src/extras-ui.js",
+      "sha256": "d932bb62e037ef1c0cf41afc6cbebfe6aba77a3d1f6964b52f5bf1b53d61d8e2",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/extras.js",
+      "sha256": "d710c3bc23a91d76ff79844559f0cf5eb351042fa183e65a69bbc489a9415a68",
+      "use": "adapted: translation contract, ID recovery, text-only HTML segmentation; full upstream batching not implemented"
+    },
+    {
+      "path": "src/facet.js",
+      "sha256": "b0eada2233170679edd59cff0d9746aa05d1d50a9bcf64fe3937ccb421cefc6d",
+      "use": "adapted: identity extraction prompt and field allowlist; strict rejection validator and explicit approval; AU export only"
+    },
+    {
+      "path": "src/generation.js",
+      "sha256": "59e61806557beb2789438e301580a980546c0982266e4e642912d4d4362f135b",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/reading-surface.js",
+      "sha256": "9cceaa8b63e1f92cd7e2064d324a713ff127e40a6c63c5254350d51ac4858cc9",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/reading-ui.js",
+      "sha256": "171e1da2ca12953c88613419e0b609d1f8c51fb7d5db98de559a6af0fad643df",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/renderer.js",
+      "sha256": "6c4b6bc443c8ca2719fb9dcf26f50f49bbb1d7835864032870abc0b3dc9333fd",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/replacement.js",
+      "sha256": "f176cafc4d81902abcdd558de22ea732262451ad9e6a988081d10d06627917c8",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/series.js",
+      "sha256": "b443fa5137b0c464608de6a2466b58c5490408828e12df72e8d3266c03629980",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/st-host.js",
+      "sha256": "2c33256f952baadb9cf679d917991520e761660c76b1ba9eedeb37c3f227d50d",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/style.css",
+      "sha256": "4461a8aa7d2bb2904fe31153952c096e6eaf7f049cfa482d040ced7988b211a8",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    },
+    {
+      "path": "src/token-budget.js",
+      "sha256": "de1ec412ce799b0229c93b520068f3b60c4b46c36537300c7a745bc66609e95e",
+      "use": "reused with ESM export"
+    },
+    {
+      "path": "src/transport.js",
+      "sha256": "8a69553510bb22389b9e3fba5a49601a3ff10ddf3fda29c1b621f5ea497a83fd",
+      "use": "excluded; host-specific or reimplemented minimal scope"
+    }
+  ]
+}
