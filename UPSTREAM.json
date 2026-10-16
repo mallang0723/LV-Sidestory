@@ -7,12 +7,12 @@
     {
       "path": "src/compact.js",
       "sha256": "7556ddb4abee91d137f0cd3aa1283767c3dea1746a41b4764c577b9cf6cc0242",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "adapted: archive cards and search layout in workspace.js; folders/tags/series management not implemented"
     },
     {
       "path": "src/composer.js",
       "sha256": "75ffa6d7460c221f883f65ce0907936033248c3e3eb051ffb5781ce365b309e0",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "adapted: work-family grouping and composer/reader flow in workspace.js; input history not implemented"
     },
     {
       "path": "src/core.js",
@@ -22,7 +22,7 @@
     {
       "path": "src/design.js",
       "sha256": "13bb344f3e262ec0b57609f164665771f00a7f11cffabe23ef94bfea1431c474",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "adapted: reference/settings separation in workspace.js; Lumiverse DTOs and no ST global access"
     },
     {
       "path": "src/enhancements.js",
@@ -92,7 +92,7 @@
     {
       "path": "src/style.css",
       "sha256": "4461a8aa7d2bb2904fe31153952c096e6eaf7f049cfa482d040ced7988b211a8",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "adapted: folder tabs, composer/reader and narrow-pane layout; scoped workspace-style.js uses Lumiverse theme tokens instead of ST full-page overlay"
     },
     {
       "path": "src/token-budget.js",

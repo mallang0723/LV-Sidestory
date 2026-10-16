@@ -1,4 +1,4 @@
-dist/
+
 *.zip
 node_modules/
 .env

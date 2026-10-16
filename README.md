@@ -6,7 +6,9 @@ Side Story는 Lumiverse에서 단일 캐릭터의 별도 이야기를 생성·�
 
 Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보증·지원하는 확장이 아닙니다. 원본 ST-Sidestory의 모든 기능을 구현한 것은 아니며 실제 모델 응답 품질을 검증한 것은 아닙니다.
 
-자료 불러오기 → 대화 ID 및 World Book 목록/엔트리 페이지 선택 → 연결 선택 → 프롬프트 미리보기 → 명시적 생성 확인 순서로 사용합니다. 현재 연결은 호스트 `connections.active` selector에서 선택하며, 사용할 수 없으면 직접 선택해야 합니다. 본편 채팅·Cortex·World Book을 수정하지 않습니다. 토큰 수와 근사 여부, 제외 자료를 미리보기에서 확인하세요.
+화면은 원작의 **Side Story / 내면 / 다면 · 보관함 · 설정** 구조를 따릅니다. 작성과 읽기를 분리하고, 좁은 drawer에서는 작성/결과를 전환합니다. 참고 대화는 ID 입력 대신 본문을 보고 체크하며, 보관함은 제목·내용 검색과 카드 목록으로 엽니다. 번역·편집·발췌·수동 복구는 결과 아래의 접힌 도구에서 사용합니다. 색상과 입력 요소는 루미버스 테마 변수를 사용하며, 호스트의 전역 화면이나 스타일을 바꾸지 않습니다.
+
+자료 불러오기 → 참고 자료에서 대화 본문 체크 및 World Book 엔트리 선택 → 연결 선택 → 프롬프트 미리보기 → 명시적 생성 확인 순서로 사용합니다. 현재 연결은 호스트 `connections.active` selector에서 선택하며, 사용할 수 없으면 직접 선택해야 합니다. 본편 채팅·Cortex·World Book을 수정하지 않습니다. 토큰 수와 근사 여부, 제외 자료를 미리보기에서 확인하세요.
 
 번역은 결과와 연결, 언어를 선택하고 번역 프롬프트를 확인한 다음 실행합니다. 원문은 보존됩니다. HTML은 텍스트 구간만 전송합니다. 잘못된 JSON 또는 누락/중복 ID는 복구 자료로 보관하며 수동 segment JSON으로 수정할 수 있습니다. 8,000 입력 토큰 초과 번역은 거부합니다.
 
@@ -16,11 +18,17 @@ Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보�
 
 소스 저장소 및 배포 안내: https://github.com/mallang0723/LV-Sidestory
 
-## 소스 설치와 빌드
+## 원작과 이식 허가
 
-GitHub 소스 설치는 Lumiverse Spindle의 자동 빌드를 사용합니다. `src/backend.ts`와 `src/frontend.ts`는 기존 JavaScript 구현을 연결하는 진입점이며, 호스트가 manifest에 지정된 `dist/backend.js`와 `dist/frontend.js`를 생성합니다. 저장소에는 생성된 dist를 추적하지 않습니다. ZIP을 직접 만들 때도 `npm run build`가 같은 TypeScript 진입점을 사용합니다.
+이 확장의 원작은 Byulchaek 및 ST-Sidestory 기여자의 **[SillyTavern용 ST-Sidestory](https://github.com/f-en-rep/ST-Sidestory)**와 **[Marinara용 Side Story/이면 Side-B](https://m.dcinside.com/mini/aichatfrontend/163)**입니다. mallang0723이 원 게시글 작성자의 허가를 받아 Lumiverse용으로 변환·이식했습니다.
 
-활성화·권한 허용 후에도 Side 탭이 보이지 않는 경우 설치된 소스에 위 두 `.ts` 파일이 있는지와 서버의 확장 빌드·로딩 로그를 확인하세요. 제거 전에는 결과 JSON을 백업하세요.
+Lumiverse 버전의 커뮤니티 배포와 GitHub 업로드는 원 게시글의 2026-10-14 댓글에서 개별 허가를 받았습니다. 원작의 비상업 조건은 유지하며, 이 허가가 상업적 이용을 허용하는 것은 아닙니다. 원작·허가 출처와 재사용 내역은 [원저작물 고지](NOTICE.md), 라이선스는 [LICENSE](LICENSE)를 확인하세요.
+
+## 설치와 빌드
+
+Lumiverse의 확장 설치에서 GitHub 주소 `https://github.com/mallang0723/LV-Sidestory`를 입력하세요. 설치 후 필요한 권한을 확인·허용하고 확장을 활성화하세요. 제거 전에는 결과 JSON을 백업하세요.
+
+GitHub 주소 설치에 필요한 `dist/backend.js`와 `dist/frontend.js`를 저장소에 포함합니다. 사용자가 직접 빌드할 필요는 없습니다. `src/backend.ts`와 `src/frontend.ts` 자동 빌드 진입점은 보조로 유지합니다. 소스를 변경할 때는 Bun 1.4.0으로 `npm run build`를 실행하고 갱신된 두 실행물도 같은 커밋에 포함하세요. 깨끗한 clone에서 재빌드해 실행물의 바이트가 일치하는지 확인하세요.
 
 기능 제한과 검증 범위는 [QA.md](QA.md), 원저작물 출처와 허가 출처는 [NOTICE.md](NOTICE.md)를 확인하세요. [PolyForm Noncommercial License 1.0.0](LICENSE)에 따라 제공하는 비상업 source-available 소프트웨어입니다. 상업적 이용은 이 라이선스로 허용되지 않습니다.
 
@@ -29,9 +37,3 @@ GitHub 소스 설치는 Lumiverse Spindle의 자동 빌드를 사용합니다. `
 핵심정보는 구조화 JSON을 검토하고 “핵심정보로 선택”으로 승인한 뒤 AU에 사용합니다. 생성·번역 요청은 호출 전에 durable journal을 기록하며 불명확한 요청을 자동으로 재과금하지 않습니다.
 
 저장 실패 후 같은 런타임의 미취소 요청은 재과금 없이 저장을 재시도할 수 있습니다. 재시작 후 record에 저장되지 않은 journal 결과는 취소 여부를 입증할 수 없어 자동 복원을 거부합니다. 원문 journal은 남지만 수동 복구 UI는 없습니다. 이미 저장된 결과의 재조회는 정상 지원합니다.
-
-## 변경 이력
-
-| 날짜 | 변경 |
-|---|---|
-| 2026-10-15 | 소스 설치용 자동 빌드 진입점 추가 |

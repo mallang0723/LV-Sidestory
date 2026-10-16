@@ -1,12 +1,16 @@
 # 원저작물 고지
 
 Side Story (사이드 스토리)는 Byulchaek 및 ST-Sidestory 기여자의 작업을 바탕으로 합니다.
-원본: https://github.com/f-en-rep/ST-Sidestory/tree/252fd07ebbb8e134d1e312f9aab034117ce03a95
+원작은 [SillyTavern용 ST-Sidestory](https://github.com/f-en-rep/ST-Sidestory)와 [Marinara용 Side Story/이면 Side-B](https://m.dcinside.com/mini/aichatfrontend/163)이며, mallang0723이 원 게시글 작성자의 허가를 받아 Lumiverse용으로 변환·이식했습니다.
+
+참조한 SillyTavern 원본: https://github.com/f-en-rep/ST-Sidestory/tree/252fd07ebbb8e134d1e312f9aab034117ce03a95
 고정 버전: 0.9.8 / 252fd07ebbb8e134d1e312f9aab034117ce03a95.
 
 프롬프트와 토큰 예산 코드의 재사용·수정 내역 및 원본 파일 SHA-256은 UPSTREAM.json에 기록합니다. 번역 계약과 HTML 텍스트 구간 처리 정책은 같은 버전 src/extras.js를 참고하여 구현했습니다. 호스트 소스는 포함하지 않습니다.
 
 identity 추출 프롬프트와 allowlist는 src/facet.js에서, 백업 envelope와 변환 규칙은 src/extension.js 및 src/core.js에서 수정·참조했습니다.
+
+작업 폴더 탭·작성/읽기·참고 자료·보관함의 화면 구조는 같은 고정 버전의 src/extension.js, src/composer.js, src/design.js, src/compact.js, src/style.css를 참고해 이식했습니다. 스타일은 호스트 drawer에 격리하고 Lumiverse 테마 변수로 연결했습니다. 원작의 전체 화면 overlay나 ST 전역 객체를 복제하지 않았습니다.
 
 ## 원 게시글 및 허가 출처
 
@@ -24,3 +28,5 @@ identity 추출 프롬프트와 allowlist는 src/facet.js에서, 백업 envelope
 | 2026-10-14 | 고정 출처 고지 |
 | 2026-10-14 | identity·백업 출처 추가 |
 | 2026-10-15 | 원 게시글·개별 허가·라이선스 명시 |
+| 2026-10-15 | ST·Marinara 원작과 이식자 구분 |
+| 2026-10-16 | 원작 UI 참고 범위 통합 |

@@ -5,13 +5,23 @@ f.api.onFrontendMessage=fn=>{backend=fn;return()=>backend=null;};f.api.sendToFro
 const ctx={ui:{registerDrawerTab:()=>({root,destroy:()=>root.replaceChildren()})},state:{get:()=>({activeProfileId:'conn'})},events:{on:()=>()=>{}},onBackendMessage:fn=>{frontend=fn;return()=>frontend=null;},sendToBackend:m=>backend?.(m,'fixture-user','fixture-session'),dom:{createSandboxFrame:({html})=>{frameCount++;const element=document.createElement('iframe');element.sandbox='';element.srcdoc=html;return {element,destroy:()=>element.remove()};}}};
 const stopBackend=install(f.api),stopFrontend=setup(ctx);
 const assert=(v,m)=>{if(!v)throw Error(m);};
-const button=s=>[...root.querySelectorAll('button')].find(e=>e.textContent===s);
+const button=s=>[...root.querySelectorAll('button')].find(e=>e.dataset.action===s||e.textContent===s);
 const click=async s=>{const b=button(s);b.click();for(let i=0;b.disabled&&i<500;i++)await new Promise(r=>setTimeout(r,10));};
 try{
- await click('자료 불러오기');root.querySelector('[aria-label="선택 대화 ID (쉼표 구분)"]').value='m1';root.querySelector('[aria-label="요청"]').value='가상 이야기';
+ assert(root.querySelector('nav[aria-label="작업 화면"]'),'original workspace navigation');
+ assert(root.querySelector('[data-ui="reader"]'),'separate reading surface');
+ await click('자료 불러오기');root.querySelector('[aria-label="요청"]').value='가상 이야기';
+ assert(root.querySelector('[data-ui="message-picks"] input[type="checkbox"]'),'readable message selection, not ID entry');
+ assert(root.querySelectorAll('[data-ui="message-picks"] input[type="checkbox"]').length===1,'hidden message not selectable');
+ root.querySelector('[data-ui="message-picks"] input[type="checkbox"]').click();
+ assert(root.querySelector('[aria-label="선택 대화 ID (쉼표 구분)"]').value==='m1','checkbox selection reaches preview input');
+ assert(f.calls===0,'navigation and source selection never call a model');
  await click('프롬프트 미리보기');assert(root.querySelector('[data-testid="prompt"]').textContent.includes('synthetic hello'),'actual prompt');await click('확인한 입력으로 생성');
  assert(root.querySelector('[aria-label="결과 / 편집 초안"]').value==='가짜 모델 결과','generation');
  root.querySelector('[aria-label="결과 / 편집 초안"]').value='edited';await click('편집을 자식 결과로 저장');await click('보관함 / 인덱스 복구');assert([...f.data.keys()].filter(k=>k.includes(':records/')).length===2,'two records plus separate journal');
+ for(const [key,approved,needsRemap] of [['approved',true,false],['unapproved',false,false],['foreign',true,true]])f.data.set('fixture-user:records/'+key+'.json',{id:key,mode:'identity',content:'synthetic identity',revision:1,identityApproved:approved,needsRemap});
+ await click('보관함 / 인덱스 복구');button('다면').click();button('AU 생성').click();
+ const identitySelect=root.querySelector('[aria-label="승인한 핵심정보"]');assert(identitySelect.tagName==='SELECT'&&[...identitySelect.options].map(x=>x.value).join(',')===',approved','AU picker contains only approved non-imported identity');
  const cleaned=staticHTML('<h1>safe</h1><script>parent.pwned=1</script><img src="https://invalid.test">');assert(!/<script|<img/.test(cleaned),'sanitization');
  assert(await replaceDisplay('hello','hello','안녕')==='안녕','worker replacement');let timed=false;try{await replaceDisplay('a'.repeat(30000)+'!','(a+)+$','x',30);}catch(e){timed=e.message==='replacement timeout';}assert(timed,'worker timeout');
  const png=await excerptPNG('합성 발췌 테스트');assert(png.type==='image/png'&&png.size>0,'PNG');
