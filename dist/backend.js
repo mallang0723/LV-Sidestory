@@ -450,12 +450,18 @@ function createService(api) {
     const fit = await assemble({ ...input, dialogue, character, persona, world, identity, excluded }, input.budget || 8000, (m) => api.tokens.countMessages(m, { model: connection.model, userId: u }));
     if (e !== epoch(u) || !alive)
       throw Error("stale preview");
-    const p = { ...fit, id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, identityId: input.identityId || null, createdAt: Date.now() };
+    const p = { ...fit, id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, identityId: input.identityId || null, createdAt: Date.now() };
     if (previews.size > 100)
       previews.delete(previews.keys().next().value);
     previews.set(p.id, p);
     return structuredClone(p);
   }
+  const runModel = async (u, connectionId) => {
+    const c = await api.connections.get(id(connectionId), u);
+    if (!c?.model)
+      throw Error("connection required");
+    return c.model;
+  };
   async function run(u, { previewId, requestId }) {
     id(requestId);
     return serial(u, async () => {
@@ -471,12 +477,14 @@ function createService(api) {
           throw Error("stale/cancelled");
       };
       await valid();
+      const model = await runModel(u, p.connectionId);
+      await valid();
       await start(u, requestId, previewId);
       await valid();
       const controller = new AbortController;
       controllers.set(u, controller);
       try {
-        const result = await api.generate.raw({ type: "raw", userId: u, messages: p.messages, connection_id: p.connectionId, parameters: { max_tokens: 2048 }, signal: controller.signal });
+        const result = await api.generate.raw({ type: "raw", userId: u, messages: p.messages, connection_id: p.connectionId, model, parameters: { max_tokens: 2048 }, signal: controller.signal });
         await valid();
         const record = { id: crypto.randomUUID(), revision: 1, schema: 1, mode: p.mode, content: text(result.content), host: { chatId: p.chatId, connectionId: p.connectionId }, parentId: p.identityId, seriesId: p.identityId || null, createdAt: Date.now(), requestId, sourceVersion: "0.9.8", translation: null };
         if (p.mode === "identity") {
@@ -526,7 +534,7 @@ function createService(api) {
     if (!alive || e !== epoch(u))
       throw Error("stale/cancelled");
     const previewKey = Array.from(new Uint8Array(digest), (x) => x.toString(16).padStart(2, "0")).join("");
-    const p = { id: previewKey, user: u, epoch: e, recordId: rid, revision, connectionId, items, messages, count };
+    const p = { id: previewKey, user: u, epoch: e, recordId: rid, revision, connectionId, model: connection.model, items, messages, count };
     previews.set(p.id, p);
     return p;
   }
@@ -561,12 +569,14 @@ function createService(api) {
       if (r?.revision !== p.revision)
         throw Error("revision conflict");
       valid();
+      const model = await runModel(u, p.connectionId);
+      valid();
       await start(u, requestId, previewId);
       valid();
       const controller = new AbortController;
       controllers.set(u, controller);
       try {
-        const result = await api.generate.raw({ type: "raw", userId: u, messages: p.messages, connection_id: p.connectionId, parameters: { max_tokens: 4096 }, signal: controller.signal });
+        const result = await api.generate.raw({ type: "raw", userId: u, messages: p.messages, connection_id: p.connectionId, model, parameters: { max_tokens: 4096 }, signal: controller.signal });
         valid();
         let recovery;
         try {
