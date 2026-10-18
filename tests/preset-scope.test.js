@@ -66,7 +66,9 @@ test('C3: non-classic engines are refused before host assembly and marked unsupp
  const {s,assembled}=setup(preset);
  await assert.rejects(s.preview('u',{...base,presetId:'p'}),/classic 엔진 프리셋만 지원합니다 \(선택한 프리셋: loom-v2 엔진\)/);assert.equal(assembled.length,0);
  const c=await s.catalog('u');assert.deepEqual(c.presets[0].support,{level:'unsupported',engine:'loom-v2',reason:'loom-v2 엔진 미지원'});
- assert.equal(presetSupport({prompt_order:[]}).level,'full','missing engine is the host default classic');s.dispose();
+ assert.equal(presetSupport({prompt_order:[block('a','Write.')]}).level,'full','missing engine is the host default classic');
+ assert.equal(presetSupport({prompt_order:[]}).level,'none','an empty preset is not shown as applied');
+ assert.equal(presetSupport({}).level,'full','a list row without prompt_order is not labelled as not applied');s.dispose();
 });
 
 test('C3: sealed blocks are left out with their reason and the preset is marked partial',async()=>{
@@ -74,7 +76,7 @@ test('C3: sealed blocks are left out with their reason and the preset is marked 
  const {s,assembled}=setup(preset);const p=await s.preview('u',{...base,presetId:'p'});
  assert.deepEqual(assembled[0].input.blocks.map(b=>b.id),['open']);
  assert.ok(p.excluded.includes('프리셋 봉인 블록(미지원 — 원 프리셋 정보 없이 풀 수 없음): sealed, sealed2'));
- assert.deepEqual(p.preset,{id:'p',name:'Hub',engine:'classic',support:'partial'});
+ assert.deepEqual(p.preset,{id:'p',name:'Hub',engine:'classic',support:'partial',reason:'봉인 블록 제외'});
  assert.deepEqual((await s.catalog('u')).presets[0].support,{level:'partial',engine:'classic',reason:'봉인 블록 제외'});
  assert.equal(presetSupport({metadata:{_lumiverse_sealed_preset:{}},prompt_order:[block('a','x')]}).level,'partial');s.dispose();
 });
@@ -102,5 +104,60 @@ test('C1-C4: README, QA and UI describe the preset limits without overclaiming',
  }
  const ui=read('src/frontend.js')+read('src/workspace.js');
  assert.ok(!ui.includes("'선택한 자료만 전달합니다. 본편 preset·Cortex·자동 World Info는 포함하지 않습니다.'"));
- for(const part of ['notices:p.notices','부분 지원','미지원','임베딩'])assert.ok(ui.includes(part),part);
+ for(const part of ['notices:p.notices','부분 지원','미지원',"lv==='none'",'임베딩'])assert.ok(ui.includes(part),part);
+});
+
+test('S1: a preset whose only block uses a host-data macro is shown as not applied in the list and the preview',async()=>{
+ const preset={id:'p',name:'Mem',engine:'classic',prompt_order:[block('mem','Recall: {{memories}}')]};
+ const {s,assembled}=setup(preset);
+ const listed=(await s.catalog('u')).presets[0].support;
+ assert.equal(listed.level,'none');assert.match(listed.reason,/적용 안 됨/);assert.match(listed.reason,/자료 매크로 블록 제외/);
+ assert.deepEqual(presetSupport(preset),listed);
+ const p=await s.preview('u',{...base,presetId:'p'});assert.equal(assembled.length,0);
+ assert.equal(p.preset.support,'none');assert.equal(p.preset.reason,listed.reason);
+ assert.ok(p.notices.some(x=>x.includes('프리셋 지시문이 적용되지 않습니다')),'not shown as a normal application');
+ assert.ok(!all(p).includes('LUMIVERSE PRESET INSTRUCTIONS'));s.dispose();
+});
+
+test('S1: blocks left out for host-data macros make the preset partial in the list and the preview',async()=>{
+ const preset={id:'p',name:'Mix',prompt_order:[block('style','Write.'),block('mem','{{memories}}')]};
+ const {s}=setup(preset);const listed=(await s.catalog('u')).presets[0].support;
+ assert.deepEqual(listed,{level:'partial',engine:'classic',reason:'자료 매크로 블록 제외'});
+ const p=await s.preview('u',{...base,presetId:'p'});assert.equal(p.preset.support,'partial');assert.equal(p.preset.reason,listed.reason);s.dispose();
+});
+
+test('S1: a sealed block reached through a saved prompt variable is partial in the list, as in the preview',async()=>{
+ const preset={id:'p',name:'Var',engine:'classic',metadata:{promptVariables:{v:{tone:'{{pblock::k}}'}}},prompt_order:[block('open','Write.'),block('v','Tone: {{var::tone}}')]};
+ const {s,assembled}=setup(preset);
+ const listed=(await s.catalog('u')).presets[0].support;
+ assert.deepEqual(listed,{level:'partial',engine:'classic',reason:'봉인 블록 제외'});
+ const p=await s.preview('u',{...base,presetId:'p'});
+ assert.deepEqual(assembled[0].input.blocks.map(b=>b.id),['open']);
+ assert.equal(p.preset.support,'partial');assert.equal(p.preset.reason,listed.reason);s.dispose();
+});
+
+test('S1: list and preview agree on support level across fixtures',async()=>{
+ const fixtures=[
+  {id:'p',name:'a',prompt_order:[block('a','Write.')]},
+  {id:'p',name:'b',prompt_order:[block('a','Write.'),block('ua','x',{role:'user_append'})]},
+  {id:'p',name:'c',prompt_order:[block('ua','x',{role:'user_append'})]},
+  {id:'p',name:'d',prompt_order:[block('a','{{pblock::k}}')]},
+  {id:'p',name:'e',metadata:{promptVariables:{a:{x:'{{getchatvarkey::secret::note}}'}}},prompt_order:[block('a','{{var::x}}'),block('b','Write.')]},
+  {id:'p',name:'f',prompt_order:[block('a','x',{enabled:false}),{id:'h',name:'h',marker:'chat_history',enabled:true,content:''}]},
+ ];
+ for(const preset of fixtures){const {s}=setup(preset);const listed=(await s.catalog('u')).presets[0].support;const p=await s.preview('u',{...base,presetId:'p'});
+  assert.equal(p.preset.support,listed.level,preset.name);assert.equal(p.preset.reason,listed.reason,preset.name);s.dispose();}
+});
+
+test('R1: v1.2.5 JSON-path variable reads and their aliases are treated as host data',()=>{
+ for(const name of ['getchatvarkey','getgvarkey','getglobalvarkey','getglobalvarindex'])
+  assert.deepEqual(blockMacros(block('a',`{{${name}::secret::note}}`)).data,[name],name);
+});
+
+test('S1: when host assembly drops every block, the preview says the preset was not applied',async()=>{
+ const {f,s}=setup({id:'p',name:'P',prompt_order:[block('style','Write.')]});f.api.assemble=async()=>({breakdown:[]});
+ const p=await s.preview('u',{...base,presetId:'p'});
+ assert.equal(p.preset.support,'none');assert.match(p.preset.reason,/적용 안 됨/);
+ assert.ok(p.notices.some(x=>x.includes('프리셋 지시문이 적용되지 않습니다')));assert.ok(!p.notices.includes(PRESET_MACRO_NOTICE));
+ assert.ok(p.excluded.includes('프리셋 생성 조건으로 빠진 블록: style'));s.dispose();
 });

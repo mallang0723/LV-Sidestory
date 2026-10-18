@@ -312,6 +312,7 @@ wi_marker wimarker outlet persona_outlet personaoutlet
 loomsummary loomsummaryprompt loomlastusermessage loomlastmessagename loomlastcharmessage
 websearchcontext web_search_context
 getchatvar foreachchatvar for_each_chat_var getgvar getglobalvar foreachglobalvar foreachgvar for_each_global_var
+getchatvarkey getgvarkey getglobalvarkey getglobalvarindex
 `.split(/\s+/).filter(Boolean));
 var SEALED_MACROS = new Set(["presetblock", "pblock"]);
 var APPEND_ROLES = new Set(["user_append", "assistant_append"]);
@@ -329,16 +330,62 @@ function blockMacros(block, promptVariables) {
   const names = [...macroNames(block.content), ...block.variables ? macroNames(block.variables) : [], ...promptVariables && promptVariables[block.id] != null ? macroNames(promptVariables[block.id]) : []];
   return { sealed: names.some((n) => SEALED_MACROS.has(n)), data: [...new Set(names.filter((n) => HOST_DATA_MACROS.has(n) || n === "$var" || n === "@var"))] };
 }
+var presetVariables = (p) => p?.metadata?.promptVariables && typeof p.metadata.promptVariables === "object" ? p.metadata.promptVariables : {};
+function classifyBlocks(p) {
+  const vars = presetVariables(p);
+  const r = { blocks: [], skipped: [], append: [], sealed: [], data: [], disabled: 0, empty: 0, vars, sealedPreset: isSealedPreset(p) };
+  for (const b of Array.isArray(p?.prompt_order) ? p.prompt_order : []) {
+    if (!b || typeof b !== "object" || typeof b.id !== "string")
+      continue;
+    const label = b.name || b.id;
+    if (b.marker) {
+      r.skipped.push(label);
+      continue;
+    }
+    if (b.enabled === false) {
+      r.disabled++;
+      continue;
+    }
+    if (typeof b.content !== "string" || !b.content.trim()) {
+      r.empty++;
+      continue;
+    }
+    if (APPEND_ROLES.has(b.role)) {
+      r.append.push(label);
+      continue;
+    }
+    const scan = blockMacros(b, vars);
+    if (scan.sealed) {
+      r.sealed.push(label);
+      continue;
+    }
+    if (scan.data.length) {
+      r.data.push(`${label} ({{${scan.data.join("}}, {{")}}})`);
+      continue;
+    }
+    r.blocks.push(b);
+  }
+  return r;
+}
+var NOT_APPLIED = "\uC801\uC6A9 \uC548 \uB428 \u2014 \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C";
+function supportOf(engine, c) {
+  if (engine !== SUPPORTED_ENGINE)
+    return { level: "unsupported", engine, reason: `${engine} \uC5D4\uC9C4 \uBBF8\uC9C0\uC6D0` };
+  const reasons = [...c.sealed.length || c.sealedPreset ? ["\uBD09\uC778 \uBE14\uB85D \uC81C\uC678"] : [], ...c.append.length ? ["append \uBE14\uB85D \uC81C\uC678"] : [], ...c.data.length ? ["\uC790\uB8CC \uB9E4\uD06C\uB85C \uBE14\uB85D \uC81C\uC678"] : []];
+  if (!c.blocks.length)
+    return { level: "none", engine, reason: [NOT_APPLIED, ...reasons].join(", ") };
+  return reasons.length ? { level: "partial", engine, reason: reasons.join(", ") } : { level: "full", engine, reason: "" };
+}
 function presetSupport(p) {
   const engine = presetEngine(p);
   if (engine !== SUPPORTED_ENGINE)
-    return { level: "unsupported", engine, reason: `${engine} \uC5D4\uC9C4 \uBBF8\uC9C0\uC6D0` };
-  const blocks = Array.isArray(p?.prompt_order) ? p.prompt_order : [];
-  const sealed = isSealedPreset(p) || blocks.some((b) => b && typeof b.content === "string" && blockMacros(b).sealed);
-  const append = blocks.some((b) => b && APPEND_ROLES.has(b.role) && b.enabled !== false && !b.marker);
-  const reasons = [...sealed ? ["\uBD09\uC778 \uBE14\uB85D \uC81C\uC678"] : [], ...append ? ["append \uBE14\uB85D \uC81C\uC678"] : []];
-  return reasons.length ? { level: "partial", engine, reason: reasons.join(", ") } : { level: "full", engine, reason: "" };
+    return supportOf(engine, null);
+  const c = classifyBlocks(p);
+  if (!Array.isArray(p?.prompt_order) && !c.sealedPreset)
+    return { level: "full", engine, reason: "" };
+  return supportOf(engine, c);
 }
+var PRESET_NOT_APPLIED_NOTICE = "\uD504\uB9AC\uC14B \uC9C0\uC2DC\uBB38\uC774 \uC801\uC6A9\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4: \uD3EC\uD568\uD560 \uC218 \uC788\uB294 \uBE14\uB85D\uC774 \uC5C6\uC5B4 \uD504\uB9AC\uC14B \uC5C6\uC774 \uBCF4\uB0B8 \uAC83\uACFC \uAC19\uC2B5\uB2C8\uB2E4. \uBE60\uC9C4 \uBE14\uB85D\uACFC \uC774\uC720\uB294 \uC81C\uC678 \uBAA9\uB85D\uC744 \uD655\uC778\uD558\uC138\uC694.";
 var PRESET_MACRO_NOTICE = "\uC8FC\uC758: \uD504\uB9AC\uC14B \uBE14\uB85D\uC758 \uB9E4\uD06C\uB85C\uB294 \uD638\uC2A4\uD2B8\uAC00 \uD604\uC7AC \uCC44\uD305 \uAE30\uC900\uC73C\uB85C \uD3BC\uCE69\uB2C8\uB2E4. \uC54C\uB824\uC9C4 \uD638\uC2A4\uD2B8 \uC790\uB8CC \uB9E4\uD06C\uB85C(\uAE30\uC5B5\xB7Cortex\xB7\uB370\uC774\uD130\uBC45\uD06C\xB7\uB300\uD654 \uBCF8\uBB38\xB7\uCE90\uB9AD\uD130/\uD398\uB974\uC18C\uB098 \uCE74\uB4DC\xB7World Info \uCD9C\uB825 \uB4F1)\uAC00 \uB4E0 \uBE14\uB85D\uC740 \uBE90\uC9C0\uB9CC \uC804\uC218 \uAC80\uC0AC\uAC00 \uC544\uB2D9\uB2C8\uB2E4. \uCE90\uB9AD\uD130\xB7\uC0AC\uC6A9\uC790 \uC774\uB984\uCC98\uB7FC \uC9C1\uC811 \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uD638\uC2A4\uD2B8 \uC790\uB8CC\uAC00 \uB4E4\uC5B4\uAC08 \uC218 \uC788\uC73C\uB2C8 \uC544\uB798 system \uBCF8\uBB38\uC744 \uD655\uC778\uD558\uC138\uC694.";
 var EMBEDDING_NOTICE = "\uC784\uBCA0\uB529: \uD504\uB9AC\uC14B \uC870\uB9BD\uC5D0 \uD638\uC2A4\uD2B8 \uD504\uB86C\uD504\uD2B8 \uC870\uB9BD\uC744 \uC4F0\uBBC0\uB85C, \uC784\uBCA0\uB529\uC774 \uCF1C\uC838 \uC788\uACE0 \uD65C\uC131 \uB370\uC774\uD130\uBC45\uD06C\uAC00 \uC788\uC73C\uBA74 \uD604\uC7AC \uCC44\uD305\uC758 \uCD5C\uADFC \uBA54\uC2DC\uC9C0 \uCD5C\uB300 6\uAC1C \uBCF8\uBB38(\uC5EC\uAE30\uC11C \uCCB4\uD06C\uD558\uC9C0 \uC54A\uC740 \uBA54\uC2DC\uC9C0 \uD3EC\uD568)\uC774 \uC124\uC815\uB41C \uC784\uBCA0\uB529 \uACF5\uAE09\uC790\uB85C \uC804\uC1A1\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uAC19\uC740 \uB0B4\uC6A9\uC774 \uCE90\uC2DC(\uC57D 10\uBD84)\uC5D0 \uC788\uC73C\uBA74 \uC694\uCCAD\uC774 \uC0DD\uB7B5\uB420 \uC218 \uC788\uACE0, \uBBF8\uB9AC\uBCF4\uAE30\uB97C \uB2E4\uC2DC \uB9CC\uB4E4 \uB54C\uB9C8\uB2E4 \uB2E4\uC2DC \uC2DC\uB3C4\uD569\uB2C8\uB2E4. \uAE30\uC5B5 \uAC80\uC0C9 \uB4F1 \uB2E4\uB978 \uC870\uB9BD \uB2E8\uACC4\uB3C4 \uC784\uBCA0\uB529\uC744 \uC694\uCCAD\uD560 \uC218 \uC788\uC5B4 \uC694\uCCAD \uD69F\uC218\uB294 \uC815\uD574\uC838 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uBAA8\uB378 \uC0DD\uC131 \uC694\uCCAD\uC740 \uBCF4\uB0B4\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.";
 
@@ -453,41 +500,9 @@ function createService(api) {
     const engine = presetEngine(preset);
     if (engine !== SUPPORTED_ENGINE)
       throw Error(`classic \uC5D4\uC9C4 \uD504\uB9AC\uC14B\uB9CC \uC9C0\uC6D0\uD569\uB2C8\uB2E4 (\uC120\uD0DD\uD55C \uD504\uB9AC\uC14B: ${engine} \uC5D4\uC9C4)`);
-    const vars = preset.metadata?.promptVariables && typeof preset.metadata.promptVariables === "object" ? preset.metadata.promptVariables : {};
-    const sealedPreset = isSealedPreset(preset);
-    const blocks = [], skipped = [], append = [], sealed = [], data = [];
-    let disabled = 0, empty = 0;
-    for (const b of Array.isArray(preset.prompt_order) ? preset.prompt_order : []) {
-      if (!b || typeof b !== "object" || typeof b.id !== "string")
-        continue;
-      const label = b.name || b.id;
-      if (b.marker) {
-        skipped.push(label);
-        continue;
-      }
-      if (b.enabled === false) {
-        disabled++;
-        continue;
-      }
-      if (typeof b.content !== "string" || !b.content.trim()) {
-        empty++;
-        continue;
-      }
-      if (APPEND_ROLES.has(b.role)) {
-        append.push(label);
-        continue;
-      }
-      const scan = blockMacros(b, vars);
-      if (scan.sealed) {
-        sealed.push(label);
-        continue;
-      }
-      if (scan.data.length) {
-        data.push(`${label} ({{${scan.data.join("}}, {{")}}})`);
-        continue;
-      }
-      blocks.push(b);
-    }
+    const scope = classifyBlocks(preset);
+    const { blocks, skipped, append, sealed, data, disabled, empty, vars } = scope;
+    const support = supportOf(engine, scope);
     const excluded = [];
     if (skipped.length)
       excluded.push(`\uD504\uB9AC\uC14B marker \uBE14\uB85D: ${skipped.join(", ")}`);
@@ -501,10 +516,9 @@ function createService(api) {
       excluded.push(`\uD504\uB9AC\uC14B \uBD09\uC778 \uBE14\uB85D(\uBBF8\uC9C0\uC6D0 \u2014 \uC6D0 \uD504\uB9AC\uC14B \uC815\uBCF4 \uC5C6\uC774 \uD480 \uC218 \uC5C6\uC74C): ${sealed.join(", ")}`);
     if (data.length)
       excluded.push(`\uD638\uC2A4\uD2B8 \uC790\uB8CC \uB9E4\uD06C\uB85C\uAC00 \uB4E0 \uD504\uB9AC\uC14B \uBE14\uB85D: ${data.join(", ")}`);
-    const support = sealed.length || append.length || sealedPreset ? "partial" : "full";
-    const info = { id: preset.id, name, engine, support };
+    const info = { id: preset.id, name, engine, support: support.level, reason: support.reason };
     if (!blocks.length)
-      return { preset: info, text: "", excluded: [...excluded, "\uD504\uB9AC\uC14B\uC5D0\uC11C \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C"], notices: [] };
+      return { preset: info, text: "", excluded: [...excluded, "\uD504\uB9AC\uC14B\uC5D0\uC11C \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C"], notices: [PRESET_NOT_APPLIED_NOTICE] };
     const out = await api.assemble({ blocks, chatId: chat.id, connectionId: connection.id, promptVariables: vars }, u);
     const wanted = new Map(blocks.map((b) => [b.id, b]));
     const used = [];
@@ -514,11 +528,13 @@ function createService(api) {
     const dropped = blocks.filter((b) => !used.some((x) => x.blockId === b.id)).map((b) => b.name || b.id);
     if (dropped.length)
       excluded.push(`\uD504\uB9AC\uC14B \uC0DD\uC131 \uC870\uAC74\uC73C\uB85C \uBE60\uC9C4 \uBE14\uB85D: ${dropped.join(", ")}`);
-    return { preset: info, text: used.length ? `LUMIVERSE PRESET INSTRUCTIONS \u2014 ${name}
+    if (!used.length)
+      return { preset: { ...info, support: "none", reason: ["\uC801\uC6A9 \uC548 \uB428 \u2014 \uC0DD\uC131 \uC870\uAC74\uC73C\uB85C \uBAA8\uB4E0 \uBE14\uB85D\uC774 \uBE60\uC9D0", ...support.level === "partial" ? [support.reason] : []].join(", ") }, text: "", excluded, notices: [PRESET_NOT_APPLIED_NOTICE, EMBEDDING_NOTICE] };
+    return { preset: info, text: `LUMIVERSE PRESET INSTRUCTIONS \u2014 ${name}
 
 ` + used.map((x) => x.content).join(`
 
-`) : "", excluded, notices: [...used.length ? [PRESET_MACRO_NOTICE] : [], EMBEDDING_NOTICE] };
+`), excluded, notices: [PRESET_MACRO_NOTICE, EMBEDDING_NOTICE] };
   }
   async function preview(u, input) {
     id(u);

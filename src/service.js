@@ -1,6 +1,6 @@
 import {staticHTML,decodeEntities} from './presentation.js';
 import {assemble,id,text,childRecord,segments,validateTranslation,validateImport,validateIdentity} from './core.js';
-import {APPEND_ROLES,SUPPORTED_ENGINE,presetEngine,isSealedPreset,blockMacros,presetSupport,PRESET_MACRO_NOTICE,EMBEDDING_NOTICE} from './preset-scope.js';
+import {SUPPORTED_ENGINE,presetEngine,classifyBlocks,supportOf,presetSupport,PRESET_MACRO_NOTICE,PRESET_NOT_APPLIED_NOTICE,EMBEDDING_NOTICE} from './preset-scope.js';
 const pick=(o,keys)=>o?Object.fromEntries(keys.filter(k=>typeof o[k]==='string').map(k=>[k,o[k]])):null;
 export function createService(api){
  const queues=new Map(),epochs=new Map(),controllers=new Map(),previews=new Map(),requests=new Map();let alive=true;
@@ -29,25 +29,19 @@ export function createService(api){
  async function presetInstructions(u,chat,connection,presetId){
  const preset=await api.presets.get(id(presetId),u);if(!preset)throw Error('preset missing');const name=typeof preset.name==='string'&&preset.name?preset.name:preset.id;
  const engine=presetEngine(preset);if(engine!==SUPPORTED_ENGINE)throw Error(`classic 엔진 프리셋만 지원합니다 (선택한 프리셋: ${engine} 엔진)`);
- const vars=preset.metadata?.promptVariables&&typeof preset.metadata.promptVariables==='object'?preset.metadata.promptVariables:{};
- const sealedPreset=isSealedPreset(preset);
- const blocks=[],skipped=[],append=[],sealed=[],data=[];let disabled=0,empty=0;
- for(const b of Array.isArray(preset.prompt_order)?preset.prompt_order:[]){if(!b||typeof b!=='object'||typeof b.id!=='string')continue;const label=b.name||b.id;if(b.marker){skipped.push(label);continue;}if(b.enabled===false){disabled++;continue;}if(typeof b.content!=='string'||!b.content.trim()){empty++;continue;}
-  if(APPEND_ROLES.has(b.role)){append.push(label);continue;}
-  const scan=blockMacros(b,vars);if(scan.sealed){sealed.push(label);continue;}if(scan.data.length){data.push(`${label} ({{${scan.data.join('}}, {{')}}})`);continue;}
-  blocks.push(b);}
+ const scope=classifyBlocks(preset);const {blocks,skipped,append,sealed,data,disabled,empty,vars}=scope;const support=supportOf(engine,scope);
  const excluded=[];if(skipped.length)excluded.push(`프리셋 marker 블록: ${skipped.join(', ')}`);if(disabled)excluded.push(`프리셋 비활성 블록 ${disabled}개`);if(empty)excluded.push(`프리셋 빈 블록 ${empty}개`);
  if(append.length)excluded.push(`프리셋 append 블록(미지원 — 붙일 대화 기록이 없어 빠짐): ${append.join(', ')}`);
  if(sealed.length)excluded.push(`프리셋 봉인 블록(미지원 — 원 프리셋 정보 없이 풀 수 없음): ${sealed.join(', ')}`);
  if(data.length)excluded.push(`호스트 자료 매크로가 든 프리셋 블록: ${data.join(', ')}`);
- const support=sealed.length||append.length||sealedPreset?'partial':'full';
- const info={id:preset.id,name,engine,support};
- if(!blocks.length)return {preset:info,text:'',excluded:[...excluded,'프리셋에서 포함할 블록 없음'],notices:[]};
+ const info={id:preset.id,name,engine,support:support.level,reason:support.reason};
+ if(!blocks.length)return {preset:info,text:'',excluded:[...excluded,'프리셋에서 포함할 블록 없음'],notices:[PRESET_NOT_APPLIED_NOTICE]};
  const out=await api.assemble({blocks,chatId:chat.id,connectionId:connection.id,promptVariables:vars},u);
  const wanted=new Map(blocks.map(b=>[b.id,b]));const used=[];
  for(const x of out?.breakdown||[])if(x?.type==='block'&&wanted.has(x.blockId)&&typeof x.content==='string'&&x.content.trim()&&!used.some(y=>y.blockId===x.blockId))used.push(x);
  const dropped=blocks.filter(b=>!used.some(x=>x.blockId===b.id)).map(b=>b.name||b.id);if(dropped.length)excluded.push(`프리셋 생성 조건으로 빠진 블록: ${dropped.join(', ')}`);
- return {preset:info,text:used.length?`LUMIVERSE PRESET INSTRUCTIONS — ${name}\n\n`+used.map(x=>x.content).join('\n\n'):'',excluded,notices:[...(used.length?[PRESET_MACRO_NOTICE]:[]),EMBEDDING_NOTICE]};
+ if(!used.length)return {preset:{...info,support:'none',reason:['적용 안 됨 — 생성 조건으로 모든 블록이 빠짐',...(support.level==='partial'?[support.reason]:[])].join(', ')},text:'',excluded,notices:[PRESET_NOT_APPLIED_NOTICE,EMBEDDING_NOTICE]};
+ return {preset:info,text:`LUMIVERSE PRESET INSTRUCTIONS — ${name}\n\n`+used.map(x=>x.content).join('\n\n'),excluded,notices:[PRESET_MACRO_NOTICE,EMBEDDING_NOTICE]};
  }
  async function preview(u,input){
  id(u);if(!alive)throw Error('disabled');const e=epoch(u);epochs.set(u,e);const chat=await api.chats.getActive(u);if(!chat)throw Error('active chat required');

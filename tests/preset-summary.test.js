@@ -56,7 +56,7 @@ test('preset blocks go through host assembly and are sent as system text before 
  assert.equal(assembled.length,1);assert.equal(assembled[0].user,'u');assert.deepEqual(assembled[0].input.blocks.map(b=>b.id),['b1','b5','b6']);assert.equal(assembled[0].input.chatId,'chat-a');assert.equal(assembled[0].input.connectionId,'conn');assert.deepEqual(assembled[0].input.promptVariables,{b5:{tone:'gentle'}});
  assert.equal(p.messages[0].role,'system');assert.equal(p.messages[0].content,'LUMIVERSE PRESET INSTRUCTIONS — DEM\n\nWrite like 테스트 인물.\n\nKeep it gentle.');
  assert.equal(p.messages.length,3);assert.ok(!JSON.stringify(p.messages).includes('MUST NOT LEAK'));assert.ok(!JSON.stringify(p.messages).includes('disabled text'));
- assert.deepEqual(p.preset,{id:'preset-dem',name:'DEM',engine:'classic',support:'full'});
+ assert.deepEqual(p.preset,{id:'preset-dem',name:'DEM',engine:'classic',support:'full',reason:''});
  assert.ok(p.excluded.includes('프리셋 marker 블록: Chat History, World Info'));assert.ok(p.excluded.includes('프리셋 비활성 블록 1개'));assert.ok(p.excluded.includes('프리셋 생성 조건으로 빠진 블록: Impersonate only'));assert.ok(!p.excluded.some(x=>x.startsWith('본편 preset')));
  await s.run('u',{previewId:p.id,requestId:'r1'});assert.equal(raw[0].messages[0].content,p.messages[0].content);s.dispose();
 });

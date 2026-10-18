@@ -564,7 +564,7 @@ function setup(ctx) {
   const presetSelect = field("프리셋", "select");
   const noPreset = el("option", "없음", presetSelect);
   noPreset.value = "";
-  el("small", "classic 엔진 프리셋의 켜진 일반 블록만 지원합니다. 봉인·append 블록과 호스트 자료 매크로가 든 블록은 빠지며, 임베딩을 켰다면 최근 대화가 임베딩 공급자로 갈 수 있습니다. 미리보기의 주의 사항(notices)을 확인하세요.", ui.fieldHost("프리셋")).className = "ss-hint";
+  el("small", "classic 엔진 프리셋의 켜진 일반 블록만 지원합니다. 봉인·append 블록과 호스트 자료 매크로가 든 블록은 빠지며(목록에 부분 지원 또는 적용 안 됨으로 표시), 임베딩을 켰다면 최근 대화가 임베딩 공급자로 갈 수 있습니다. 미리보기의 주의 사항(notices)을 확인하세요.", ui.fieldHost("프리셋")).className = "ss-hint";
   const ids = field("선택 대화 ID (쉼표 구분)");
   const world = field("선택 World Book 엔트리 ID (쉼표 구분)");
   const book = field("World Book 선택", "select"), bookRows = el("div", "", ui.bookRows);
@@ -744,7 +744,7 @@ ${m.content}`).join(`
     presetSelect.replaceChildren(noPreset);
     for (const x of c.presets || []) {
       const lv = x.support?.level;
-      const o = el("option", lv === "unsupported" ? `${x.name} (미지원: ${x.support.reason})` : lv === "partial" ? `${x.name} (부분 지원: ${x.support.reason})` : x.name, presetSelect);
+      const o = el("option", lv === "unsupported" ? `${x.name} (미지원: ${x.support.reason})` : lv === "partial" ? `${x.name} (부분 지원: ${x.support.reason})` : lv === "none" ? `${x.name} (${x.support.reason})` : x.name, presetSelect);
       o.value = x.id;
       o.disabled = lv === "unsupported";
     }
