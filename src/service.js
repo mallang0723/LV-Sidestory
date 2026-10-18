@@ -1,5 +1,6 @@
 import {staticHTML,decodeEntities} from './presentation.js';
 import {assemble,id,text,childRecord,segments,validateTranslation,validateImport,validateIdentity} from './core.js';
+import {APPEND_ROLES,SUPPORTED_ENGINE,presetEngine,isSealedPreset,blockMacros,presetSupport,PRESET_MACRO_NOTICE,EMBEDDING_NOTICE} from './preset-scope.js';
 const pick=(o,keys)=>o?Object.fromEntries(keys.filter(k=>typeof o[k]==='string').map(k=>[k,o[k]])):null;
 export function createService(api){
  const queues=new Map(),epochs=new Map(),controllers=new Map(),previews=new Map(),requests=new Map();let alive=true;
@@ -21,19 +22,32 @@ export function createService(api){
  async function books(u,{offset=0}={}){return api.world_books.list({limit:20,offset:Math.max(0,Number(offset)||0),userId:u});}
  async function entries(u,{bookId,offset=0}){if(!await api.world_books.get(id(bookId),u))throw Error('world book access denied');return api.world_books.entries.list(bookId,{limit:20,offset:Math.max(0,Number(offset)||0),userId:u});}
  const loomSummary=chat=>typeof chat?.metadata?.loom_summary==='string'?chat.metadata.loom_summary.trim():'';
- // Preset blocks are rendered by the host's own block assembly (macros, prompt variables, injection triggers);
- // markers such as chat history or world info are skipped because Side Story supplies its own references.
+ // Preset blocks are rendered by the host's own block assembly (macros, prompt variables, injection triggers)
+ // in a temporary classic preset. Markers are skipped because Side Story supplies its own references;
+ // append blocks need the chat history marker, sealed blocks need the original preset metadata, and blocks
+ // using known host-data macros are left out. See preset-scope.js for the limits of these checks.
  async function presetInstructions(u,chat,connection,presetId){
  const preset=await api.presets.get(id(presetId),u);if(!preset)throw Error('preset missing');const name=typeof preset.name==='string'&&preset.name?preset.name:preset.id;
- const blocks=[],skipped=[];let disabled=0,empty=0;
- for(const b of Array.isArray(preset.prompt_order)?preset.prompt_order:[]){if(!b||typeof b!=='object'||typeof b.id!=='string')continue;const label=b.name||b.id;if(b.marker){skipped.push(label);continue;}if(b.enabled===false){disabled++;continue;}if(typeof b.content!=='string'||!b.content.trim()){empty++;continue;}blocks.push(b);}
+ const engine=presetEngine(preset);if(engine!==SUPPORTED_ENGINE)throw Error(`classic 엔진 프리셋만 지원합니다 (선택한 프리셋: ${engine} 엔진)`);
+ const vars=preset.metadata?.promptVariables&&typeof preset.metadata.promptVariables==='object'?preset.metadata.promptVariables:{};
+ const sealedPreset=isSealedPreset(preset);
+ const blocks=[],skipped=[],append=[],sealed=[],data=[];let disabled=0,empty=0;
+ for(const b of Array.isArray(preset.prompt_order)?preset.prompt_order:[]){if(!b||typeof b!=='object'||typeof b.id!=='string')continue;const label=b.name||b.id;if(b.marker){skipped.push(label);continue;}if(b.enabled===false){disabled++;continue;}if(typeof b.content!=='string'||!b.content.trim()){empty++;continue;}
+  if(APPEND_ROLES.has(b.role)){append.push(label);continue;}
+  const scan=blockMacros(b,vars);if(scan.sealed){sealed.push(label);continue;}if(scan.data.length){data.push(`${label} ({{${scan.data.join('}}, {{')}}})`);continue;}
+  blocks.push(b);}
  const excluded=[];if(skipped.length)excluded.push(`프리셋 marker 블록: ${skipped.join(', ')}`);if(disabled)excluded.push(`프리셋 비활성 블록 ${disabled}개`);if(empty)excluded.push(`프리셋 빈 블록 ${empty}개`);
- if(!blocks.length)return {preset:{id:preset.id,name},text:'',excluded:[...excluded,'프리셋에서 포함할 블록 없음']};
- const out=await api.assemble({blocks,chatId:chat.id,connectionId:connection.id,promptVariables:preset.metadata?.promptVariables&&typeof preset.metadata.promptVariables==='object'?preset.metadata.promptVariables:{}},u);
+ if(append.length)excluded.push(`프리셋 append 블록(미지원 — 붙일 대화 기록이 없어 빠짐): ${append.join(', ')}`);
+ if(sealed.length)excluded.push(`프리셋 봉인 블록(미지원 — 원 프리셋 정보 없이 풀 수 없음): ${sealed.join(', ')}`);
+ if(data.length)excluded.push(`호스트 자료 매크로가 든 프리셋 블록: ${data.join(', ')}`);
+ const support=sealed.length||append.length||sealedPreset?'partial':'full';
+ const info={id:preset.id,name,engine,support};
+ if(!blocks.length)return {preset:info,text:'',excluded:[...excluded,'프리셋에서 포함할 블록 없음'],notices:[]};
+ const out=await api.assemble({blocks,chatId:chat.id,connectionId:connection.id,promptVariables:vars},u);
  const wanted=new Map(blocks.map(b=>[b.id,b]));const used=[];
- for(const x of out?.breakdown||[])if(['block','append'].includes(x?.type)&&wanted.has(x.blockId)&&typeof x.content==='string'&&x.content.trim()&&!used.some(y=>y.blockId===x.blockId))used.push(x);
- const dropped=blocks.filter(b=>!used.some(x=>x.blockId===b.id)).map(b=>b.name||b.id);if(dropped.length)excluded.push(`프리셋 조건으로 빠진 블록: ${dropped.join(', ')}`);
- return {preset:{id:preset.id,name},text:used.length?`LUMIVERSE PRESET INSTRUCTIONS — ${name}\n\n`+used.map(x=>x.content).join('\n\n'):'',excluded};
+ for(const x of out?.breakdown||[])if(x?.type==='block'&&wanted.has(x.blockId)&&typeof x.content==='string'&&x.content.trim()&&!used.some(y=>y.blockId===x.blockId))used.push(x);
+ const dropped=blocks.filter(b=>!used.some(x=>x.blockId===b.id)).map(b=>b.name||b.id);if(dropped.length)excluded.push(`프리셋 생성 조건으로 빠진 블록: ${dropped.join(', ')}`);
+ return {preset:info,text:used.length?`LUMIVERSE PRESET INSTRUCTIONS — ${name}\n\n`+used.map(x=>x.content).join('\n\n'):'',excluded,notices:[...(used.length?[PRESET_MACRO_NOTICE]:[]),EMBEDDING_NOTICE]};
  }
  async function preview(u,input){
  id(u);if(!alive)throw Error('disabled');const e=epoch(u);epochs.set(u,e);const chat=await api.chats.getActive(u);if(!chat)throw Error('active chat required');
@@ -52,7 +66,7 @@ export function createService(api){
  let presetPart=null;if(input.presetId){presetPart=await presetInstructions(u,chat,connection,input.presetId);excluded.push(...presetPart.excluded);}
  const fit=await assemble({...input,summary,presetText:presetPart?.text||'',dialogue,character,persona,world,identity,excluded},input.budget||8000,m=>api.tokens.countMessages(m,{model:connection.model,userId:u}));
  if(e!==epoch(u)||!alive)throw Error('stale preview');
- const p={...fit,id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,preset:presetPart?.preset||null,summarySource:{loom:!!loom,manual:!!manual.trim()},identityId:input.identityId||null,createdAt:Date.now()};
+ const p={...fit,notices:presetPart?.notices||[],id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,preset:presetPart?.preset||null,summarySource:{loom:!!loom,manual:!!manual.trim()},identityId:input.identityId||null,createdAt:Date.now()};
  if(previews.size>100)previews.delete(previews.keys().next().value);previews.set(p.id,p);return structuredClone(p);
  }
  // Raw generation does not fall back to the connection's model, so pass it explicitly.
@@ -84,7 +98,7 @@ export function createService(api){
  async function importRecords(u,raw){const rows=validateImport(raw);return serial(u,async()=>{for(const r of rows)await save(u,r);return rows;});}
  async function remap(u,rid){return serial(u,async()=>{const r=await read(u,`records/${id(rid)}.json`);if(!r)throw Error('record missing');const chat=await api.chats.getActive(u);if(!chat)throw Error('chat required');return save(u,{...r,revision:r.revision+1,host:{chatId:chat.id,characterId:chat.character_id},needsRemap:false});});}
  async function catalog(u){const chat=await api.chats.getActive(u);let presets=[],presetsError=null;
- try{const r=await api.presets.list({limit:200,userId:u});presets=(r?.data||[]).filter(p=>typeof p?.id==='string').map(p=>({id:p.id,name:typeof p.name==='string'&&p.name?p.name:p.id}));}catch(e){presetsError=e.message;}
+ try{const r=await api.presets.list({limit:200,userId:u});presets=(r?.data||[]).filter(p=>typeof p?.id==='string').map(p=>({id:p.id,name:typeof p.name==='string'&&p.name?p.name:p.id,support:presetSupport(p)}));}catch(e){presetsError=e.message;}
  const saved=await read(u,'settings.json');return {chat,connections:await api.connections.list(u),messages:chat?await api.chat.getMessages(chat.id):[],presets,presetsError,hasLoomSummary:!!loomSummary(chat),settings:{presetId:typeof saved?.presetId==='string'?saved.presetId:''}};}
  async function saveSettings(u,{presetId=''}={}){if(presetId!=='')id(presetId);await write(u,'settings.json',{presetId});return {presetId};}
  return {saveSettings,books,entries,approveIdentity,translationPreview,translationRun,preview,run,cancel,list,edit,translate,importRecords,remap,catalog,dispose(){alive=false;cancelAll();off.forEach(f=>f());}};

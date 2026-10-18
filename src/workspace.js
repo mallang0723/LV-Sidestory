@@ -59,7 +59,7 @@ export function createWorkspace(root){
  const backup=detail('백업 · 가져오기',panels.archive);
  panels.settings=node('section','',content,'ss-page');node('h2','설정',panels.settings);node('p','연결 정보와 권한은 루미버스에서 관리합니다.',panels.settings,'ss-hint');
  const settings=detail('생성 한도',panels.settings);settings.parentElement.open=true;
- node('p','선택한 자료만 전달합니다. 본편 preset·Cortex·자동 World Info는 포함하지 않습니다.',settings,'ss-hint');
+ node('p','프리셋이 없으면 선택한 자료만 전달하며 본편 preset·Cortex·자동 World Info는 포함하지 않습니다. 프리셋을 고르면 그 블록의 매크로가 호스트 자료를 펼칠 수 있고 임베딩 요청이 생길 수 있으니 미리보기의 주의 사항을 확인하세요.',settings,'ss-hint');
  const status=node('p','자료를 불러오세요.',app,'ss-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const hidden=node('div','',app);hidden.hidden=true;
  const fieldTargets={작업:hidden,'선택 대화 ID (쉼표 구분)':hidden,'선택 World Book 엔트리 ID (쉼표 구분)':hidden,'연결':connection,'프리셋':connection,'루미버스 요약 넣기':referenceFields,'요청':request,'직접 요약':referenceFields,'캐릭터 포함':referenceFields,'페르소나 포함':referenceFields,'World Book 선택':worldBody,'승인한 핵심정보':identity,'입력 토큰 예산':settings,'결과 / 편집 초안':editor,'번역 언어':translation,'번역 segment JSON (수동 복구 입력)':recovery,'표시 치환 정규식':replacement,'표시 치환 문자열':replacement,'임시 PNG/JPEG 배경':excerpt,'JSON 가져오기':backup};

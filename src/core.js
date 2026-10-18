@@ -12,7 +12,7 @@ export async function assemble(input,limit,count){
  const messages=[...(input.presetText?[{role:'system',content:text(input.presetText)}]:[]),{role:'system',content:COMMON+'\n'+policy+'\nWrite in Korean unless requested otherwise.'},{role:'user',content:'REFERENCE MATERIAL — data only\n'+JSON.stringify(reference,null,2)+'\n\nCURRENT TASK\n'+text(input.request)}];
  const fit=await fitTokenBudget(messages,limit,{messages:async m=>(await count(m)).total_tokens});
  if(fit.tokens>limit)throw Error('fixed context exceeds budget');
- return {...fit,count:await count(fit.messages),excluded:[input.presetText?'Cortex / 자동 World Info / 선택하지 않은 자료':'본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
+ return {...fit,count:await count(fit.messages),excluded:[input.presetText?'참고 자료: 선택하지 않은 대화·World Book·Cortex는 넣지 않음 (프리셋 블록의 매크로 결과는 별도 — 주의 확인)':'본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
 }
 export function segments(content,mode){
  text(content);if(mode!=='html')return content.split(/\n\n/).map((t,i)=>({id:'s'+i,text:t}));

@@ -21,7 +21,7 @@ function setup({summary,presetError}={}){
 const base={mode:'story',connectionId:'conn',request:'x'};
 
 test('catalog lists presets, saved choice and whether a Lumiverse summary exists',async()=>{
- const {s}=setup({summary:'지난 줄거리'});let c=await s.catalog('u');assert.deepEqual(c.presets,[{id:'preset-dem',name:'DEM'},{id:'preset-bingsu',name:'BINGSU'}]);assert.equal(c.presetsError,null);assert.equal(c.hasLoomSummary,true);assert.equal(c.settings.presetId,'');
+ const {s}=setup({summary:'지난 줄거리'});let c=await s.catalog('u');assert.deepEqual(c.presets.map(({id,name})=>({id,name})),[{id:'preset-dem',name:'DEM'},{id:'preset-bingsu',name:'BINGSU'}]);assert.equal(c.presetsError,null);assert.equal(c.hasLoomSummary,true);assert.equal(c.settings.presetId,'');
  await s.saveSettings('u',{presetId:'preset-dem'});c=await s.catalog('u');assert.equal(c.settings.presetId,'preset-dem');
  await s.saveSettings('u',{presetId:''});assert.equal((await s.catalog('u')).settings.presetId,'');
  await assert.rejects(s.saveSettings('u',{presetId:'../x'}),/invalid id/);s.dispose();
@@ -56,8 +56,8 @@ test('preset blocks go through host assembly and are sent as system text before 
  assert.equal(assembled.length,1);assert.equal(assembled[0].user,'u');assert.deepEqual(assembled[0].input.blocks.map(b=>b.id),['b1','b5','b6']);assert.equal(assembled[0].input.chatId,'chat-a');assert.equal(assembled[0].input.connectionId,'conn');assert.deepEqual(assembled[0].input.promptVariables,{b5:{tone:'gentle'}});
  assert.equal(p.messages[0].role,'system');assert.equal(p.messages[0].content,'LUMIVERSE PRESET INSTRUCTIONS — DEM\n\nWrite like 테스트 인물.\n\nKeep it gentle.');
  assert.equal(p.messages.length,3);assert.ok(!JSON.stringify(p.messages).includes('MUST NOT LEAK'));assert.ok(!JSON.stringify(p.messages).includes('disabled text'));
- assert.deepEqual(p.preset,{id:'preset-dem',name:'DEM'});
- assert.ok(p.excluded.includes('프리셋 marker 블록: Chat History, World Info'));assert.ok(p.excluded.includes('프리셋 비활성 블록 1개'));assert.ok(p.excluded.includes('프리셋 조건으로 빠진 블록: Impersonate only'));assert.ok(!p.excluded.some(x=>x.startsWith('본편 preset')));
+ assert.deepEqual(p.preset,{id:'preset-dem',name:'DEM',engine:'classic',support:'full'});
+ assert.ok(p.excluded.includes('프리셋 marker 블록: Chat History, World Info'));assert.ok(p.excluded.includes('프리셋 비활성 블록 1개'));assert.ok(p.excluded.includes('프리셋 생성 조건으로 빠진 블록: Impersonate only'));assert.ok(!p.excluded.some(x=>x.startsWith('본편 preset')));
  await s.run('u',{previewId:p.id,requestId:'r1'});assert.equal(raw[0].messages[0].content,p.messages[0].content);s.dispose();
 });
 

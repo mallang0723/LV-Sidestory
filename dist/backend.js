@@ -115,7 +115,7 @@ CURRENT TASK
   const fit = await fitTokenBudget(messages, limit, { messages: async (m) => (await count(m)).total_tokens });
   if (fit.tokens > limit)
     throw Error("fixed context exceeds budget");
-  return { ...fit, count: await count(fit.messages), excluded: [input.presetText ? "Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC" : "\uBCF8\uD3B8 preset / Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC", ...input.excluded || [], ...fit.dropped ? [`\uC624\uB798\uB41C \uB300\uD654 ${fit.dropped}\uAC1C`] : []] };
+  return { ...fit, count: await count(fit.messages), excluded: [input.presetText ? "\uCC38\uACE0 \uC790\uB8CC: \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uB300\uD654\xB7World Book\xB7Cortex\uB294 \uB123\uC9C0 \uC54A\uC74C (\uD504\uB9AC\uC14B \uBE14\uB85D\uC758 \uB9E4\uD06C\uB85C \uACB0\uACFC\uB294 \uBCC4\uB3C4 \u2014 \uC8FC\uC758 \uD655\uC778)" : "\uBCF8\uD3B8 preset / Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC", ...input.excluded || [], ...fit.dropped ? [`\uC624\uB798\uB41C \uB300\uD654 ${fit.dropped}\uAC1C`] : []] };
 }
 function segments(content, mode) {
   text(content);
@@ -295,6 +295,53 @@ function decodeEntities(value) {
   });
 }
 
+// src/preset-scope.js
+var HOST_DATA_MACROS = new Set(`
+memories longtermmemory chatmemory ltm memoriesraw memoriesactive memoriescount
+entities entityfacts entityname relationships arc memorysalience cortexactive entitycount charactercolors
+databank databankmemory documents knowledgebank databankactive databankcount databankraw
+lastmessage last_message lastmessageid last_message_id lastusermessage last_user_message lastcharmessage last_char_message lastbotmessage lastmessagename
+messageat message_at msgat messagesby messages_by msgby foreachmessage for_each_message messagecount message_count
+rejectedswipe rejectedgeneration regeneratedmessage userinput user_input
+description chardescription personality charpersonality scenario charscenario persona userpersona
+chargroupfocuseddescription charfocuseddescription char_group_focused_description chargroupfocusedpersonality charfocusedpersonality char_group_focused_personality
+mesexamples mes_examples examplemessages mesexamplesraw system charprompt charsystem
+charposthistoryinstructions charinstruction jailbreak charjailbreak chardepthprompt depth_prompt
+charcreatornotes creatornotes firstmessage firstmes first_message original
+wi_marker wimarker outlet persona_outlet personaoutlet
+loomsummary loomsummaryprompt loomlastusermessage loomlastmessagename loomlastcharmessage
+websearchcontext web_search_context
+getchatvar foreachchatvar for_each_chat_var getgvar getglobalvar foreachglobalvar foreachgvar for_each_global_var
+`.split(/\s+/).filter(Boolean));
+var SEALED_MACROS = new Set(["presetblock", "pblock"]);
+var APPEND_ROLES = new Set(["user_append", "assistant_append"]);
+var SUPPORTED_ENGINE = "classic";
+var presetEngine = (p) => typeof p?.engine === "string" && p.engine ? p.engine : SUPPORTED_ENGINE;
+var isSealedPreset = (p) => !!p?.metadata && typeof p.metadata === "object" && p.metadata._lumiverse_sealed_preset != null;
+function macroNames(value) {
+  const src = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  const names = [];
+  for (const m of src.matchAll(/\{\{\s*[!?~>/#]*\s*([.$@]?)([A-Za-z0-9_-]*)/g))
+    names.push(m[1] === "$" || m[1] === "@" ? m[1] + "var" : m[2].toLowerCase());
+  return names;
+}
+function blockMacros(block, promptVariables) {
+  const names = [...macroNames(block.content), ...block.variables ? macroNames(block.variables) : [], ...promptVariables && promptVariables[block.id] != null ? macroNames(promptVariables[block.id]) : []];
+  return { sealed: names.some((n) => SEALED_MACROS.has(n)), data: [...new Set(names.filter((n) => HOST_DATA_MACROS.has(n) || n === "$var" || n === "@var"))] };
+}
+function presetSupport(p) {
+  const engine = presetEngine(p);
+  if (engine !== SUPPORTED_ENGINE)
+    return { level: "unsupported", engine, reason: `${engine} \uC5D4\uC9C4 \uBBF8\uC9C0\uC6D0` };
+  const blocks = Array.isArray(p?.prompt_order) ? p.prompt_order : [];
+  const sealed = isSealedPreset(p) || blocks.some((b) => b && typeof b.content === "string" && blockMacros(b).sealed);
+  const append = blocks.some((b) => b && APPEND_ROLES.has(b.role) && b.enabled !== false && !b.marker);
+  const reasons = [...sealed ? ["\uBD09\uC778 \uBE14\uB85D \uC81C\uC678"] : [], ...append ? ["append \uBE14\uB85D \uC81C\uC678"] : []];
+  return reasons.length ? { level: "partial", engine, reason: reasons.join(", ") } : { level: "full", engine, reason: "" };
+}
+var PRESET_MACRO_NOTICE = "\uC8FC\uC758: \uD504\uB9AC\uC14B \uBE14\uB85D\uC758 \uB9E4\uD06C\uB85C\uB294 \uD638\uC2A4\uD2B8\uAC00 \uD604\uC7AC \uCC44\uD305 \uAE30\uC900\uC73C\uB85C \uD3BC\uCE69\uB2C8\uB2E4. \uC54C\uB824\uC9C4 \uD638\uC2A4\uD2B8 \uC790\uB8CC \uB9E4\uD06C\uB85C(\uAE30\uC5B5\xB7Cortex\xB7\uB370\uC774\uD130\uBC45\uD06C\xB7\uB300\uD654 \uBCF8\uBB38\xB7\uCE90\uB9AD\uD130/\uD398\uB974\uC18C\uB098 \uCE74\uB4DC\xB7World Info \uCD9C\uB825 \uB4F1)\uAC00 \uB4E0 \uBE14\uB85D\uC740 \uBE90\uC9C0\uB9CC \uC804\uC218 \uAC80\uC0AC\uAC00 \uC544\uB2D9\uB2C8\uB2E4. \uCE90\uB9AD\uD130\xB7\uC0AC\uC6A9\uC790 \uC774\uB984\uCC98\uB7FC \uC9C1\uC811 \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uD638\uC2A4\uD2B8 \uC790\uB8CC\uAC00 \uB4E4\uC5B4\uAC08 \uC218 \uC788\uC73C\uB2C8 \uC544\uB798 system \uBCF8\uBB38\uC744 \uD655\uC778\uD558\uC138\uC694.";
+var EMBEDDING_NOTICE = "\uC784\uBCA0\uB529: \uD504\uB9AC\uC14B \uC870\uB9BD\uC5D0 \uD638\uC2A4\uD2B8 \uD504\uB86C\uD504\uD2B8 \uC870\uB9BD\uC744 \uC4F0\uBBC0\uB85C, \uC784\uBCA0\uB529\uC774 \uCF1C\uC838 \uC788\uACE0 \uD65C\uC131 \uB370\uC774\uD130\uBC45\uD06C\uAC00 \uC788\uC73C\uBA74 \uD604\uC7AC \uCC44\uD305\uC758 \uCD5C\uADFC \uBA54\uC2DC\uC9C0 \uCD5C\uB300 6\uAC1C \uBCF8\uBB38(\uC5EC\uAE30\uC11C \uCCB4\uD06C\uD558\uC9C0 \uC54A\uC740 \uBA54\uC2DC\uC9C0 \uD3EC\uD568)\uC774 \uC124\uC815\uB41C \uC784\uBCA0\uB529 \uACF5\uAE09\uC790\uB85C \uC804\uC1A1\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uAC19\uC740 \uB0B4\uC6A9\uC774 \uCE90\uC2DC(\uC57D 10\uBD84)\uC5D0 \uC788\uC73C\uBA74 \uC694\uCCAD\uC774 \uC0DD\uB7B5\uB420 \uC218 \uC788\uACE0, \uBBF8\uB9AC\uBCF4\uAE30\uB97C \uB2E4\uC2DC \uB9CC\uB4E4 \uB54C\uB9C8\uB2E4 \uB2E4\uC2DC \uC2DC\uB3C4\uD569\uB2C8\uB2E4. \uAE30\uC5B5 \uAC80\uC0C9 \uB4F1 \uB2E4\uB978 \uC870\uB9BD \uB2E8\uACC4\uB3C4 \uC784\uBCA0\uB529\uC744 \uC694\uCCAD\uD560 \uC218 \uC788\uC5B4 \uC694\uCCAD \uD69F\uC218\uB294 \uC815\uD574\uC838 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uBAA8\uB378 \uC0DD\uC131 \uC694\uCCAD\uC740 \uBCF4\uB0B4\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.";
+
 // src/service.js
 var pick = (o, keys) => o ? Object.fromEntries(keys.filter((k) => typeof o[k] === "string").map((k) => [k, o[k]])) : null;
 function createService(api) {
@@ -403,7 +450,12 @@ function createService(api) {
     if (!preset)
       throw Error("preset missing");
     const name = typeof preset.name === "string" && preset.name ? preset.name : preset.id;
-    const blocks = [], skipped = [];
+    const engine = presetEngine(preset);
+    if (engine !== SUPPORTED_ENGINE)
+      throw Error(`classic \uC5D4\uC9C4 \uD504\uB9AC\uC14B\uB9CC \uC9C0\uC6D0\uD569\uB2C8\uB2E4 (\uC120\uD0DD\uD55C \uD504\uB9AC\uC14B: ${engine} \uC5D4\uC9C4)`);
+    const vars = preset.metadata?.promptVariables && typeof preset.metadata.promptVariables === "object" ? preset.metadata.promptVariables : {};
+    const sealedPreset = isSealedPreset(preset);
+    const blocks = [], skipped = [], append = [], sealed = [], data = [];
     let disabled = 0, empty = 0;
     for (const b of Array.isArray(preset.prompt_order) ? preset.prompt_order : []) {
       if (!b || typeof b !== "object" || typeof b.id !== "string")
@@ -421,6 +473,19 @@ function createService(api) {
         empty++;
         continue;
       }
+      if (APPEND_ROLES.has(b.role)) {
+        append.push(label);
+        continue;
+      }
+      const scan = blockMacros(b, vars);
+      if (scan.sealed) {
+        sealed.push(label);
+        continue;
+      }
+      if (scan.data.length) {
+        data.push(`${label} ({{${scan.data.join("}}, {{")}}})`);
+        continue;
+      }
       blocks.push(b);
     }
     const excluded = [];
@@ -430,22 +495,30 @@ function createService(api) {
       excluded.push(`\uD504\uB9AC\uC14B \uBE44\uD65C\uC131 \uBE14\uB85D ${disabled}\uAC1C`);
     if (empty)
       excluded.push(`\uD504\uB9AC\uC14B \uBE48 \uBE14\uB85D ${empty}\uAC1C`);
+    if (append.length)
+      excluded.push(`\uD504\uB9AC\uC14B append \uBE14\uB85D(\uBBF8\uC9C0\uC6D0 \u2014 \uBD99\uC77C \uB300\uD654 \uAE30\uB85D\uC774 \uC5C6\uC5B4 \uBE60\uC9D0): ${append.join(", ")}`);
+    if (sealed.length)
+      excluded.push(`\uD504\uB9AC\uC14B \uBD09\uC778 \uBE14\uB85D(\uBBF8\uC9C0\uC6D0 \u2014 \uC6D0 \uD504\uB9AC\uC14B \uC815\uBCF4 \uC5C6\uC774 \uD480 \uC218 \uC5C6\uC74C): ${sealed.join(", ")}`);
+    if (data.length)
+      excluded.push(`\uD638\uC2A4\uD2B8 \uC790\uB8CC \uB9E4\uD06C\uB85C\uAC00 \uB4E0 \uD504\uB9AC\uC14B \uBE14\uB85D: ${data.join(", ")}`);
+    const support = sealed.length || append.length || sealedPreset ? "partial" : "full";
+    const info = { id: preset.id, name, engine, support };
     if (!blocks.length)
-      return { preset: { id: preset.id, name }, text: "", excluded: [...excluded, "\uD504\uB9AC\uC14B\uC5D0\uC11C \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C"] };
-    const out = await api.assemble({ blocks, chatId: chat.id, connectionId: connection.id, promptVariables: preset.metadata?.promptVariables && typeof preset.metadata.promptVariables === "object" ? preset.metadata.promptVariables : {} }, u);
+      return { preset: info, text: "", excluded: [...excluded, "\uD504\uB9AC\uC14B\uC5D0\uC11C \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C"], notices: [] };
+    const out = await api.assemble({ blocks, chatId: chat.id, connectionId: connection.id, promptVariables: vars }, u);
     const wanted = new Map(blocks.map((b) => [b.id, b]));
     const used = [];
     for (const x of out?.breakdown || [])
-      if (["block", "append"].includes(x?.type) && wanted.has(x.blockId) && typeof x.content === "string" && x.content.trim() && !used.some((y) => y.blockId === x.blockId))
+      if (x?.type === "block" && wanted.has(x.blockId) && typeof x.content === "string" && x.content.trim() && !used.some((y) => y.blockId === x.blockId))
         used.push(x);
     const dropped = blocks.filter((b) => !used.some((x) => x.blockId === b.id)).map((b) => b.name || b.id);
     if (dropped.length)
-      excluded.push(`\uD504\uB9AC\uC14B \uC870\uAC74\uC73C\uB85C \uBE60\uC9C4 \uBE14\uB85D: ${dropped.join(", ")}`);
-    return { preset: { id: preset.id, name }, text: used.length ? `LUMIVERSE PRESET INSTRUCTIONS \u2014 ${name}
+      excluded.push(`\uD504\uB9AC\uC14B \uC0DD\uC131 \uC870\uAC74\uC73C\uB85C \uBE60\uC9C4 \uBE14\uB85D: ${dropped.join(", ")}`);
+    return { preset: info, text: used.length ? `LUMIVERSE PRESET INSTRUCTIONS \u2014 ${name}
 
 ` + used.map((x) => x.content).join(`
 
-`) : "", excluded };
+`) : "", excluded, notices: [...used.length ? [PRESET_MACRO_NOTICE] : [], EMBEDDING_NOTICE] };
   }
   async function preview(u, input) {
     id(u);
@@ -515,7 +588,7 @@ ${loom}` : manual;
     const fit = await assemble({ ...input, summary, presetText: presetPart?.text || "", dialogue, character, persona, world, identity, excluded }, input.budget || 8000, (m) => api.tokens.countMessages(m, { model: connection.model, userId: u }));
     if (e !== epoch(u) || !alive)
       throw Error("stale preview");
-    const p = { ...fit, id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, preset: presetPart?.preset || null, summarySource: { loom: !!loom, manual: !!manual.trim() }, identityId: input.identityId || null, createdAt: Date.now() };
+    const p = { ...fit, notices: presetPart?.notices || [], id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, preset: presetPart?.preset || null, summarySource: { loom: !!loom, manual: !!manual.trim() }, identityId: input.identityId || null, createdAt: Date.now() };
     if (previews.size > 100)
       previews.delete(previews.keys().next().value);
     previews.set(p.id, p);
@@ -698,7 +771,7 @@ ${loom}` : manual;
     let presets = [], presetsError = null;
     try {
       const r = await api.presets.list({ limit: 200, userId: u });
-      presets = (r?.data || []).filter((p) => typeof p?.id === "string").map((p) => ({ id: p.id, name: typeof p.name === "string" && p.name ? p.name : p.id }));
+      presets = (r?.data || []).filter((p) => typeof p?.id === "string").map((p) => ({ id: p.id, name: typeof p.name === "string" && p.name ? p.name : p.id, support: presetSupport(p) }));
     } catch (e) {
       presetsError = e.message;
     }

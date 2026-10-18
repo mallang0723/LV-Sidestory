@@ -357,7 +357,7 @@ function createWorkspace(root) {
   node("p", "연결 정보와 권한은 루미버스에서 관리합니다.", panels.settings, "ss-hint");
   const settings = detail("생성 한도", panels.settings);
   settings.parentElement.open = true;
-  node("p", "선택한 자료만 전달합니다. 본편 preset·Cortex·자동 World Info는 포함하지 않습니다.", settings, "ss-hint");
+  node("p", "프리셋이 없으면 선택한 자료만 전달하며 본편 preset·Cortex·자동 World Info는 포함하지 않습니다. 프리셋을 고르면 그 블록의 매크로가 호스트 자료를 펼칠 수 있고 임베딩 요청이 생길 수 있으니 미리보기의 주의 사항을 확인하세요.", settings, "ss-hint");
   const status = node("p", "자료를 불러오세요.", app, "ss-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -564,6 +564,7 @@ function setup(ctx) {
   const presetSelect = field("프리셋", "select");
   const noPreset = el("option", "없음", presetSelect);
   noPreset.value = "";
+  el("small", "classic 엔진 프리셋의 켜진 일반 블록만 지원합니다. 봉인·append 블록과 호스트 자료 매크로가 든 블록은 빠지며, 임베딩을 켰다면 최근 대화가 임베딩 공급자로 갈 수 있습니다. 미리보기의 주의 사항(notices)을 확인하세요.", ui.fieldHost("프리셋")).className = "ss-hint";
   const ids = field("선택 대화 ID (쉼표 구분)");
   const world = field("선택 World Book 엔트리 ID (쉼표 구분)");
   const book = field("World Book 선택", "select"), bookRows = el("div", "", ui.bookRows);
@@ -742,10 +743,12 @@ ${m.content}`).join(`
 `);
     presetSelect.replaceChildren(noPreset);
     for (const x of c.presets || []) {
-      const o = el("option", x.name, presetSelect);
+      const lv = x.support?.level;
+      const o = el("option", lv === "unsupported" ? `${x.name} (미지원: ${x.support.reason})` : lv === "partial" ? `${x.name} (부분 지원: ${x.support.reason})` : x.name, presetSelect);
       o.value = x.id;
+      o.disabled = lv === "unsupported";
     }
-    presetSelect.value = (c.presets || []).some((x) => x.id === c.settings?.presetId) ? c.settings.presetId : "";
+    presetSelect.value = (c.presets || []).some((x) => x.id === c.settings?.presetId && x.support?.level !== "unsupported") ? c.settings.presetId : "";
     loomSummary.checked = !!c.hasLoomSummary;
     ui.catalog(c, ids, invalidate);
     status.textContent = "참고 자료에서 포함할 대화를 선택하세요." + (c.presetsError ? ` (프리셋 목록을 불러오지 못했습니다: ${c.presetsError})` : "");
@@ -763,7 +766,7 @@ ${m.content}`).join(`
     if (e !== epoch || disposed)
       return;
     preview = p;
-    prompt.textContent = JSON.stringify({ connection: p.connectionId, model: p.model, preset: p.preset, summarySource: p.summarySource, count: p.count, excluded: p.excluded, messages: p.messages }, null, 2);
+    prompt.textContent = JSON.stringify({ connection: p.connectionId, model: p.model, preset: p.preset, summarySource: p.summarySource, count: p.count, notices: p.notices, excluded: p.excluded, messages: p.messages }, null, 2);
     ui.preview();
     run.disabled = false;
     status.textContent = "실제 전송 입력을 확인한 뒤 생성하세요.";
