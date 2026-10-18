@@ -20,6 +20,21 @@ export function createService(api){
  async function approveIdentity(u,rid,revision){return serial(u,async()=>{const r=await read(u,`records/${id(rid)}.json`);if(!r||r.mode!=='identity'||r.revision!==revision||r.needsRemap)throw Error('identity revision/remap');return save(u,{...r,facetPlan:validateIdentity(r.facetPlan||r.content),identityApproved:true,revision:r.revision+1});});}
  async function books(u,{offset=0}={}){return api.world_books.list({limit:20,offset:Math.max(0,Number(offset)||0),userId:u});}
  async function entries(u,{bookId,offset=0}){if(!await api.world_books.get(id(bookId),u))throw Error('world book access denied');return api.world_books.entries.list(bookId,{limit:20,offset:Math.max(0,Number(offset)||0),userId:u});}
+ const loomSummary=chat=>typeof chat?.metadata?.loom_summary==='string'?chat.metadata.loom_summary.trim():'';
+ // Preset blocks are rendered by the host's own block assembly (macros, prompt variables, injection triggers);
+ // markers such as chat history or world info are skipped because Side Story supplies its own references.
+ async function presetInstructions(u,chat,connection,presetId){
+ const preset=await api.presets.get(id(presetId),u);if(!preset)throw Error('preset missing');const name=typeof preset.name==='string'&&preset.name?preset.name:preset.id;
+ const blocks=[],skipped=[];let disabled=0,empty=0;
+ for(const b of Array.isArray(preset.prompt_order)?preset.prompt_order:[]){if(!b||typeof b!=='object'||typeof b.id!=='string')continue;const label=b.name||b.id;if(b.marker){skipped.push(label);continue;}if(b.enabled===false){disabled++;continue;}if(typeof b.content!=='string'||!b.content.trim()){empty++;continue;}blocks.push(b);}
+ const excluded=[];if(skipped.length)excluded.push(`프리셋 marker 블록: ${skipped.join(', ')}`);if(disabled)excluded.push(`프리셋 비활성 블록 ${disabled}개`);if(empty)excluded.push(`프리셋 빈 블록 ${empty}개`);
+ if(!blocks.length)return {preset:{id:preset.id,name},text:'',excluded:[...excluded,'프리셋에서 포함할 블록 없음']};
+ const out=await api.assemble({blocks,chatId:chat.id,connectionId:connection.id,promptVariables:preset.metadata?.promptVariables&&typeof preset.metadata.promptVariables==='object'?preset.metadata.promptVariables:{}},u);
+ const wanted=new Map(blocks.map(b=>[b.id,b]));const used=[];
+ for(const x of out?.breakdown||[])if(['block','append'].includes(x?.type)&&wanted.has(x.blockId)&&typeof x.content==='string'&&x.content.trim()&&!used.some(y=>y.blockId===x.blockId))used.push(x);
+ const dropped=blocks.filter(b=>!used.some(x=>x.blockId===b.id)).map(b=>b.name||b.id);if(dropped.length)excluded.push(`프리셋 조건으로 빠진 블록: ${dropped.join(', ')}`);
+ return {preset:{id:preset.id,name},text:used.length?`LUMIVERSE PRESET INSTRUCTIONS — ${name}\n\n`+used.map(x=>x.content).join('\n\n'):'',excluded};
+ }
  async function preview(u,input){
  id(u);if(!alive)throw Error('disabled');const e=epoch(u);epochs.set(u,e);const chat=await api.chats.getActive(u);if(!chat)throw Error('active chat required');
  const connection=input.connectionId?await api.connections.get(id(input.connectionId),u):null;
@@ -32,9 +47,12 @@ export function createService(api){
  const world=[];for(const entryId of [...new Set(input.worldIds||[])]){const entry=await api.world_books.entries.get(id(entryId),u);if(!entry)throw Error('world entry missing');if(!(input.worldBookIds||[]).includes(entry.world_book_id)||!await api.world_books.get(id(entry.world_book_id),u))throw Error('explicit accessible world book required');world.push({id:entry.id,content:entry.content});}
  let identity=null;if(input.identityId){const r=await read(u,`records/${id(input.identityId)}.json`);if(!r||r.mode!=='identity'||r.needsRemap)throw Error('approved mapped identity required');if(!r.identityApproved)throw Error('identity approval required');identity=validateIdentity(r.facetPlan);}
  if(input.mode==='au'&&!identity)throw Error('select identity first');
- const fit=await assemble({...input,dialogue,character,persona,world,identity,excluded},input.budget||8000,m=>api.tokens.countMessages(m,{model:connection.model,userId:u}));
+ const loom=input.includeLoomSummary?loomSummary(chat):'';const manual=typeof input.summary==='string'?input.summary:'';if(input.includeLoomSummary&&!loom)excluded.push('루미버스 요약 없음');
+ const summary=loom?(manual.trim()?`[루미버스 요약]\n${loom}\n\n[직접 요약]\n${manual}`:`[루미버스 요약]\n${loom}`):manual;
+ let presetPart=null;if(input.presetId){presetPart=await presetInstructions(u,chat,connection,input.presetId);excluded.push(...presetPart.excluded);}
+ const fit=await assemble({...input,summary,presetText:presetPart?.text||'',dialogue,character,persona,world,identity,excluded},input.budget||8000,m=>api.tokens.countMessages(m,{model:connection.model,userId:u}));
  if(e!==epoch(u)||!alive)throw Error('stale preview');
- const p={...fit,id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,identityId:input.identityId||null,createdAt:Date.now()};
+ const p={...fit,id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,preset:presetPart?.preset||null,summarySource:{loom:!!loom,manual:!!manual.trim()},identityId:input.identityId||null,createdAt:Date.now()};
  if(previews.size>100)previews.delete(previews.keys().next().value);previews.set(p.id,p);return structuredClone(p);
  }
  // Raw generation does not fall back to the connection's model, so pass it explicitly.
@@ -65,6 +83,9 @@ export function createService(api){
  async function list(u){return serial(u,async()=>{const rows=await records(u);await repair(u,rows);return rows;});}
  async function importRecords(u,raw){const rows=validateImport(raw);return serial(u,async()=>{for(const r of rows)await save(u,r);return rows;});}
  async function remap(u,rid){return serial(u,async()=>{const r=await read(u,`records/${id(rid)}.json`);if(!r)throw Error('record missing');const chat=await api.chats.getActive(u);if(!chat)throw Error('chat required');return save(u,{...r,revision:r.revision+1,host:{chatId:chat.id,characterId:chat.character_id},needsRemap:false});});}
- async function catalog(u){const chat=await api.chats.getActive(u);return {chat,connections:await api.connections.list(u),messages:chat?await api.chat.getMessages(chat.id):[]};}
- return {books,entries,approveIdentity,translationPreview,translationRun,preview,run,cancel,list,edit,translate,importRecords,remap,catalog,dispose(){alive=false;cancelAll();off.forEach(f=>f());}};
+ async function catalog(u){const chat=await api.chats.getActive(u);let presets=[],presetsError=null;
+ try{const r=await api.presets.list({limit:200,userId:u});presets=(r?.data||[]).filter(p=>typeof p?.id==='string').map(p=>({id:p.id,name:typeof p.name==='string'&&p.name?p.name:p.id}));}catch(e){presetsError=e.message;}
+ const saved=await read(u,'settings.json');return {chat,connections:await api.connections.list(u),messages:chat?await api.chat.getMessages(chat.id):[],presets,presetsError,hasLoomSummary:!!loomSummary(chat),settings:{presetId:typeof saved?.presetId==='string'?saved.presetId:''}};}
+ async function saveSettings(u,{presetId=''}={}){if(presetId!=='')id(presetId);await write(u,'settings.json',{presetId});return {presetId};}
+ return {saveSettings,books,entries,approveIdentity,translationPreview,translationRun,preview,run,cancel,list,edit,translate,importRecords,remap,catalog,dispose(){alive=false;cancelAll();off.forEach(f=>f());}};
 }

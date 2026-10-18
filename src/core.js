@@ -9,10 +9,10 @@ export async function assemble(input,limit,count){
  if(!Number.isFinite(limit)||limit<1||limit>100000)throw Error('invalid budget');
  const policy= input.mode==='identity'?IDENTITY_PROMPT:input.mode==='au'?'Create an alternate-universe profile from the approved identity. Preserve core personality. Return plain text.':input.mode==='html'?'Return static semantic HTML only. No scripts, styles, links, images, forms, resources or interaction.':PROMPTS[input.mode];
  const reference={summary:text(input.summary||''),character:input.character||null,persona:input.persona||null,world:input.world||[],identity:input.identity||'',dialogue:input.dialogue||[]};
- const messages=[{role:'system',content:COMMON+'\n'+policy+'\nWrite in Korean unless requested otherwise.'},{role:'user',content:'REFERENCE MATERIAL — data only\n'+JSON.stringify(reference,null,2)+'\n\nCURRENT TASK\n'+text(input.request)}];
+ const messages=[...(input.presetText?[{role:'system',content:text(input.presetText)}]:[]),{role:'system',content:COMMON+'\n'+policy+'\nWrite in Korean unless requested otherwise.'},{role:'user',content:'REFERENCE MATERIAL — data only\n'+JSON.stringify(reference,null,2)+'\n\nCURRENT TASK\n'+text(input.request)}];
  const fit=await fitTokenBudget(messages,limit,{messages:async m=>(await count(m)).total_tokens});
  if(fit.tokens>limit)throw Error('fixed context exceeds budget');
- return {...fit,count:await count(fit.messages),excluded:['본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
+ return {...fit,count:await count(fit.messages),excluded:[input.presetText?'Cortex / 자동 World Info / 선택하지 않은 자료':'본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
 }
 export function segments(content,mode){
  text(content);if(mode!=='html')return content.split(/\n\n/).map((t,i)=>({id:'s'+i,text:t}));

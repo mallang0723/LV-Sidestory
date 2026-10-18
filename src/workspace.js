@@ -62,7 +62,7 @@ export function createWorkspace(root){
  node('p','선택한 자료만 전달합니다. 본편 preset·Cortex·자동 World Info는 포함하지 않습니다.',settings,'ss-hint');
  const status=node('p','자료를 불러오세요.',app,'ss-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const hidden=node('div','',app);hidden.hidden=true;
- const fieldTargets={작업:hidden,'선택 대화 ID (쉼표 구분)':hidden,'선택 World Book 엔트리 ID (쉼표 구분)':hidden,'연결':connection,'요청':request,'직접 요약':referenceFields,'캐릭터 포함':referenceFields,'페르소나 포함':referenceFields,'World Book 선택':worldBody,'승인한 핵심정보':identity,'입력 토큰 예산':settings,'결과 / 편집 초안':editor,'번역 언어':translation,'번역 segment JSON (수동 복구 입력)':recovery,'표시 치환 정규식':replacement,'표시 치환 문자열':replacement,'임시 PNG/JPEG 배경':excerpt,'JSON 가져오기':backup};
+ const fieldTargets={작업:hidden,'선택 대화 ID (쉼표 구분)':hidden,'선택 World Book 엔트리 ID (쉼표 구분)':hidden,'연결':connection,'프리셋':connection,'루미버스 요약 넣기':referenceFields,'요청':request,'직접 요약':referenceFields,'캐릭터 포함':referenceFields,'페르소나 포함':referenceFields,'World Book 선택':worldBody,'승인한 핵심정보':identity,'입력 토큰 예산':settings,'결과 / 편집 초안':editor,'번역 언어':translation,'번역 segment JSON (수동 복구 입력)':recovery,'표시 치환 정규식':replacement,'표시 치환 문자열':replacement,'임시 PNG/JPEG 배경':excerpt,'JSON 가져오기':backup};
  const actionTargets={};
  const route=(target,labels)=>labels.forEach(label=>actionTargets[label]=target);
  route(worldActions,['World Books 목록','책 이전 페이지','책 다음 페이지','선택한 책 엔트리','엔트리 이전 페이지','엔트리 다음 페이지']);

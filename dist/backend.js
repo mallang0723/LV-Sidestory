@@ -105,7 +105,7 @@ async function assemble(input, limit, count) {
     throw Error("invalid budget");
   const policy = input.mode === "identity" ? IDENTITY_PROMPT : input.mode === "au" ? "Create an alternate-universe profile from the approved identity. Preserve core personality. Return plain text." : input.mode === "html" ? "Return static semantic HTML only. No scripts, styles, links, images, forms, resources or interaction." : PROMPTS[input.mode];
   const reference = { summary: text(input.summary || ""), character: input.character || null, persona: input.persona || null, world: input.world || [], identity: input.identity || "", dialogue: input.dialogue || [] };
-  const messages = [{ role: "system", content: COMMON + `
+  const messages = [...input.presetText ? [{ role: "system", content: text(input.presetText) }] : [], { role: "system", content: COMMON + `
 ` + policy + `
 Write in Korean unless requested otherwise.` }, { role: "user", content: `REFERENCE MATERIAL \u2014 data only
 ` + JSON.stringify(reference, null, 2) + `
@@ -115,7 +115,7 @@ CURRENT TASK
   const fit = await fitTokenBudget(messages, limit, { messages: async (m) => (await count(m)).total_tokens });
   if (fit.tokens > limit)
     throw Error("fixed context exceeds budget");
-  return { ...fit, count: await count(fit.messages), excluded: ["\uBCF8\uD3B8 preset / Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC", ...input.excluded || [], ...fit.dropped ? [`\uC624\uB798\uB41C \uB300\uD654 ${fit.dropped}\uAC1C`] : []] };
+  return { ...fit, count: await count(fit.messages), excluded: [input.presetText ? "Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC" : "\uBCF8\uD3B8 preset / Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC", ...input.excluded || [], ...fit.dropped ? [`\uC624\uB798\uB41C \uB300\uD654 ${fit.dropped}\uAC1C`] : []] };
 }
 function segments(content, mode) {
   text(content);
@@ -397,6 +397,56 @@ function createService(api) {
       throw Error("world book access denied");
     return api.world_books.entries.list(bookId, { limit: 20, offset: Math.max(0, Number(offset) || 0), userId: u });
   }
+  const loomSummary = (chat) => typeof chat?.metadata?.loom_summary === "string" ? chat.metadata.loom_summary.trim() : "";
+  async function presetInstructions(u, chat, connection, presetId) {
+    const preset = await api.presets.get(id(presetId), u);
+    if (!preset)
+      throw Error("preset missing");
+    const name = typeof preset.name === "string" && preset.name ? preset.name : preset.id;
+    const blocks = [], skipped = [];
+    let disabled = 0, empty = 0;
+    for (const b of Array.isArray(preset.prompt_order) ? preset.prompt_order : []) {
+      if (!b || typeof b !== "object" || typeof b.id !== "string")
+        continue;
+      const label = b.name || b.id;
+      if (b.marker) {
+        skipped.push(label);
+        continue;
+      }
+      if (b.enabled === false) {
+        disabled++;
+        continue;
+      }
+      if (typeof b.content !== "string" || !b.content.trim()) {
+        empty++;
+        continue;
+      }
+      blocks.push(b);
+    }
+    const excluded = [];
+    if (skipped.length)
+      excluded.push(`\uD504\uB9AC\uC14B marker \uBE14\uB85D: ${skipped.join(", ")}`);
+    if (disabled)
+      excluded.push(`\uD504\uB9AC\uC14B \uBE44\uD65C\uC131 \uBE14\uB85D ${disabled}\uAC1C`);
+    if (empty)
+      excluded.push(`\uD504\uB9AC\uC14B \uBE48 \uBE14\uB85D ${empty}\uAC1C`);
+    if (!blocks.length)
+      return { preset: { id: preset.id, name }, text: "", excluded: [...excluded, "\uD504\uB9AC\uC14B\uC5D0\uC11C \uD3EC\uD568\uD560 \uBE14\uB85D \uC5C6\uC74C"] };
+    const out = await api.assemble({ blocks, chatId: chat.id, connectionId: connection.id, promptVariables: preset.metadata?.promptVariables && typeof preset.metadata.promptVariables === "object" ? preset.metadata.promptVariables : {} }, u);
+    const wanted = new Map(blocks.map((b) => [b.id, b]));
+    const used = [];
+    for (const x of out?.breakdown || [])
+      if (["block", "append"].includes(x?.type) && wanted.has(x.blockId) && typeof x.content === "string" && x.content.trim() && !used.some((y) => y.blockId === x.blockId))
+        used.push(x);
+    const dropped = blocks.filter((b) => !used.some((x) => x.blockId === b.id)).map((b) => b.name || b.id);
+    if (dropped.length)
+      excluded.push(`\uD504\uB9AC\uC14B \uC870\uAC74\uC73C\uB85C \uBE60\uC9C4 \uBE14\uB85D: ${dropped.join(", ")}`);
+    return { preset: { id: preset.id, name }, text: used.length ? `LUMIVERSE PRESET INSTRUCTIONS \u2014 ${name}
+
+` + used.map((x) => x.content).join(`
+
+`) : "", excluded };
+  }
   async function preview(u, input) {
     id(u);
     if (!alive)
@@ -447,10 +497,25 @@ function createService(api) {
     }
     if (input.mode === "au" && !identity)
       throw Error("select identity first");
-    const fit = await assemble({ ...input, dialogue, character, persona, world, identity, excluded }, input.budget || 8000, (m) => api.tokens.countMessages(m, { model: connection.model, userId: u }));
+    const loom = input.includeLoomSummary ? loomSummary(chat) : "";
+    const manual = typeof input.summary === "string" ? input.summary : "";
+    if (input.includeLoomSummary && !loom)
+      excluded.push("\uB8E8\uBBF8\uBC84\uC2A4 \uC694\uC57D \uC5C6\uC74C");
+    const summary = loom ? manual.trim() ? `[\uB8E8\uBBF8\uBC84\uC2A4 \uC694\uC57D]
+${loom}
+
+[\uC9C1\uC811 \uC694\uC57D]
+${manual}` : `[\uB8E8\uBBF8\uBC84\uC2A4 \uC694\uC57D]
+${loom}` : manual;
+    let presetPart = null;
+    if (input.presetId) {
+      presetPart = await presetInstructions(u, chat, connection, input.presetId);
+      excluded.push(...presetPart.excluded);
+    }
+    const fit = await assemble({ ...input, summary, presetText: presetPart?.text || "", dialogue, character, persona, world, identity, excluded }, input.budget || 8000, (m) => api.tokens.countMessages(m, { model: connection.model, userId: u }));
     if (e !== epoch(u) || !alive)
       throw Error("stale preview");
-    const p = { ...fit, id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, identityId: input.identityId || null, createdAt: Date.now() };
+    const p = { ...fit, id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, preset: presetPart?.preset || null, summarySource: { loom: !!loom, manual: !!manual.trim() }, identityId: input.identityId || null, createdAt: Date.now() };
     if (previews.size > 100)
       previews.delete(previews.keys().next().value);
     previews.set(p.id, p);
@@ -630,9 +695,23 @@ function createService(api) {
   }
   async function catalog(u) {
     const chat = await api.chats.getActive(u);
-    return { chat, connections: await api.connections.list(u), messages: chat ? await api.chat.getMessages(chat.id) : [] };
+    let presets = [], presetsError = null;
+    try {
+      const r = await api.presets.list({ limit: 200, userId: u });
+      presets = (r?.data || []).filter((p) => typeof p?.id === "string").map((p) => ({ id: p.id, name: typeof p.name === "string" && p.name ? p.name : p.id }));
+    } catch (e) {
+      presetsError = e.message;
+    }
+    const saved = await read(u, "settings.json");
+    return { chat, connections: await api.connections.list(u), messages: chat ? await api.chat.getMessages(chat.id) : [], presets, presetsError, hasLoomSummary: !!loomSummary(chat), settings: { presetId: typeof saved?.presetId === "string" ? saved.presetId : "" } };
   }
-  return { books, entries, approveIdentity, translationPreview, translationRun, preview, run, cancel, list, edit, translate, importRecords, remap, catalog, dispose() {
+  async function saveSettings(u, { presetId = "" } = {}) {
+    if (presetId !== "")
+      id(presetId);
+    await write(u, "settings.json", { presetId });
+    return { presetId };
+  }
+  return { saveSettings, books, entries, approveIdentity, translationPreview, translationRun, preview, run, cancel, list, edit, translate, importRecords, remap, catalog, dispose() {
     alive = false;
     cancelAll();
     off.forEach((f) => f());
@@ -660,6 +739,9 @@ function install(api) {
           break;
         case "catalog":
           result = await service.catalog(userId);
+          break;
+        case "saveSettings":
+          result = await service.saveSettings(userId, a);
           break;
         case "preview":
           result = await service.preview(userId, a);

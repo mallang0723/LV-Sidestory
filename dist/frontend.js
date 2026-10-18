@@ -363,7 +363,7 @@ function createWorkspace(root) {
   status.setAttribute("aria-live", "polite");
   const hidden = node("div", "", app);
   hidden.hidden = true;
-  const fieldTargets = { 작업: hidden, "선택 대화 ID (쉼표 구분)": hidden, "선택 World Book 엔트리 ID (쉼표 구분)": hidden, "연결": connection, "요청": request, "직접 요약": referenceFields, "캐릭터 포함": referenceFields, "페르소나 포함": referenceFields, "World Book 선택": worldBody, "승인한 핵심정보": identity, "입력 토큰 예산": settings, "결과 / 편집 초안": editor, "번역 언어": translation, "번역 segment JSON (수동 복구 입력)": recovery, "표시 치환 정규식": replacement, "표시 치환 문자열": replacement, "임시 PNG/JPEG 배경": excerpt, "JSON 가져오기": backup };
+  const fieldTargets = { 작업: hidden, "선택 대화 ID (쉼표 구분)": hidden, "선택 World Book 엔트리 ID (쉼표 구분)": hidden, "연결": connection, "프리셋": connection, "루미버스 요약 넣기": referenceFields, "요청": request, "직접 요약": referenceFields, "캐릭터 포함": referenceFields, "페르소나 포함": referenceFields, "World Book 선택": worldBody, "승인한 핵심정보": identity, "입력 토큰 예산": settings, "결과 / 편집 초안": editor, "번역 언어": translation, "번역 segment JSON (수동 복구 입력)": recovery, "표시 치환 정규식": replacement, "표시 치환 문자열": replacement, "임시 PNG/JPEG 배경": excerpt, "JSON 가져오기": backup };
   const actionTargets = {};
   const route = (target, labels) => labels.forEach((label) => actionTargets[label] = target);
   route(worldActions, ["World Books 목록", "책 이전 페이지", "책 다음 페이지", "선택한 책 엔트리", "엔트리 이전 페이지", "엔트리 다음 페이지"]);
@@ -561,6 +561,9 @@ function setup(ctx) {
     o.value = key;
   }
   const connection = field("연결", "select");
+  const presetSelect = field("프리셋", "select");
+  const noPreset = el("option", "없음", presetSelect);
+  noPreset.value = "";
   const ids = field("선택 대화 ID (쉼표 구분)");
   const world = field("선택 World Book 엔트리 ID (쉼표 구분)");
   const book = field("World Book 선택", "select"), bookRows = el("div", "", ui.bookRows);
@@ -571,6 +574,8 @@ function setup(ctx) {
   character.checked = true;
   const persona = field("페르소나 포함");
   persona.type = "checkbox";
+  const loomSummary = field("루미버스 요약 넣기");
+  loomSummary.type = "checkbox";
   const summary = field("직접 요약", "textarea"), identity = field("승인한 핵심정보", "select"), request = field("요청", "textarea"), budget = field("입력 토큰 예산");
   budget.type = "number";
   budget.value = "8000";
@@ -629,7 +634,7 @@ function setup(ctx) {
     ui.invalidatePreview();
     prompt.textContent = "입력이 변경되었습니다. 다시 미리보세요.";
   };
-  for (const e of [mode, connection, ids, world, character, persona, summary, identity, request, budget])
+  for (const e of [mode, connection, presetSelect, loomSummary, ids, world, character, persona, summary, identity, request, budget])
     e.addEventListener("input", invalidate);
   const eventOff = [ctx.events.on("CHAT_SWITCHED", () => {
     invalidate();
@@ -735,17 +740,30 @@ function setup(ctx) {
     available.textContent = c.messages.map((m) => `${m.role}${m.extra?.hidden ? " (숨김: 제외)" : ""}
 ${m.content}`).join(`
 `);
+    presetSelect.replaceChildren(noPreset);
+    for (const x of c.presets || []) {
+      const o = el("option", x.name, presetSelect);
+      o.value = x.id;
+    }
+    presetSelect.value = (c.presets || []).some((x) => x.id === c.settings?.presetId) ? c.settings.presetId : "";
+    loomSummary.checked = !!c.hasLoomSummary;
     ui.catalog(c, ids, invalidate);
-    status.textContent = "참고 자료에서 포함할 대화를 선택하세요.";
+    status.textContent = "참고 자료에서 포함할 대화를 선택하세요." + (c.presetsError ? ` (프리셋 목록을 불러오지 못했습니다: ${c.presetsError})` : "");
     invalidate();
+  });
+  presetSelect.addEventListener("change", () => {
+    rpc("saveSettings", { presetId: presetSelect.value }).catch((e) => {
+      if (!disposed && e.message !== "stale result")
+        status.textContent = e.message;
+    });
   });
   action("프롬프트 미리보기", async () => {
     const e = epoch;
-    const p = await rpc("preview", { mode: mode.value, connectionId: connection.value, messageIds: ids.value.split(",").map((s) => s.trim()).filter(Boolean), worldBookIds: [...chosenBooks], worldIds: world.value.split(",").map((s) => s.trim()).filter(Boolean), includeCharacter: character.checked, includePersona: persona.checked, summary: summary.value, identityId: identity.value, request: request.value, budget: Number(budget.value) });
+    const p = await rpc("preview", { mode: mode.value, connectionId: connection.value, messageIds: ids.value.split(",").map((s) => s.trim()).filter(Boolean), worldBookIds: [...chosenBooks], worldIds: world.value.split(",").map((s) => s.trim()).filter(Boolean), presetId: presetSelect.value, includeLoomSummary: loomSummary.checked, includeCharacter: character.checked, includePersona: persona.checked, summary: summary.value, identityId: identity.value, request: request.value, budget: Number(budget.value) });
     if (e !== epoch || disposed)
       return;
     preview = p;
-    prompt.textContent = JSON.stringify({ connection: p.connectionId, count: p.count, excluded: p.excluded, messages: p.messages }, null, 2);
+    prompt.textContent = JSON.stringify({ connection: p.connectionId, model: p.model, preset: p.preset, summarySource: p.summarySource, count: p.count, excluded: p.excluded, messages: p.messages }, null, 2);
     ui.preview();
     run.disabled = false;
     status.textContent = "실제 전송 입력을 확인한 뒤 생성하세요.";
