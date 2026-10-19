@@ -1,8 +1,8 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {createService} from '../src/service.js';import {fake} from './fake.js';
-const input={mode:'story',connectionId:'conn',request:'test',messageIds:['m1','m2'],includeCharacter:true,budget:8000};
+const input={mode:'story',connectionId:'conn',request:'test',dialogue:{mode:'range',start:'0',end:'1'},includeCharacter:true,budget:8000};
 test('preview -> generate -> user storage, durable idempotency and repair',async()=>{
- const f=fake(),s=createService(f.api);const p=await s.preview('u',input);assert.match(p.excluded.join(),/m2/);
+ const f=fake(),s=createService(f.api);const p=await s.preview('u',input);assert.ok(p.excluded.includes('원문 범위의 숨김·시스템 대화 1개 제외'));assert.match(JSON.stringify(p.messages),/synthetic hello/);assert.doesNotMatch(JSON.stringify(p.messages),/secret hidden/);
  f.setFail(true);const a=await s.run('u',{previewId:p.id,requestId:'r1'});assert.equal(a.indexPending,true);
  f.setFail(false);const b=await s.run('u',{previewId:p.id,requestId:'r1'});assert.equal(a.id,b.id);assert.equal(f.calls,1);
  assert.equal((await s.list('u')).length,1);assert.equal((await s.list('other')).length,0);s.dispose();

@@ -28,12 +28,16 @@ export function createWorkspace(root){
  const request=node('div','',scroll),connection=node('div','',scroll),load=node('div','',scroll,'ss-inline-actions');
  const reference=node('details','',scroll,'ss-details');node('summary','참고 자료',reference);
  const referenceBody=node('div','',reference,'ss-details-body');
- const chatTitle=node('p','자료를 불러와 참고할 대화를 선택하세요.',referenceBody,'ss-hint');
- const messagePicks=node('div','',referenceBody,'ss-message-picks');messagePicks.dataset.ui='message-picks';
+ const chatTitle=node('p','현재 채팅의 루미버스 요약을 기본으로 넣습니다.',referenceBody,'ss-hint');
  const referenceFields=node('div','',referenceBody);
+ // Optional raw dialogue: numbers only (latest N or #start–#end). No message list is loaded into the panel.
+ const raw=node('div','',referenceBody,'ss-raw');const rawToggle=node('div','',raw);
+ const rawPanel=node('div','',raw,'ss-raw-panel');rawPanel.dataset.ui='raw-dialogue';rawPanel.hidden=true;
+ const rawModes=node('div','',rawPanel,'ss-segmented');rawModes.setAttribute('role','group');rawModes.setAttribute('aria-label','원문 고르는 방식');
+ const rawRecent=node('div','',rawPanel),rawRange=node('div','',rawPanel,'ss-range');rawRange.hidden=true;
+ const rawSummary=node('p','',rawPanel,'ss-hint');rawSummary.dataset.ui='raw-summary';rawSummary.setAttribute('aria-live','polite');
  const world=node('details','',referenceBody,'ss-details');node('summary','World Book 엔트리',world);const worldBody=node('div','',world,'ss-details-body');
  const worldActions=node('div','',worldBody,'ss-inline-actions');
- const source=node('details','',referenceBody,'ss-details');node('summary','불러온 대화 원문',source);const sourceBody=node('div','',source,'ss-details-body');
  const identity=node('div','',scroll);
  const generate=node('div','',panels.create,'ss-generate');
  node('small','미리보기에서 전송 내용을 확인한 뒤 생성하세요.',generate,'ss-hint');
@@ -62,7 +66,7 @@ export function createWorkspace(root){
  node('p','프리셋이 없으면 선택한 자료만 전달하며 본편 preset·Cortex·자동 World Info는 포함하지 않습니다. 프리셋을 고르면 그 블록의 매크로가 호스트 자료를 펼칠 수 있고 임베딩 요청이 생길 수 있으니 미리보기의 주의 사항을 확인하세요.',settings,'ss-hint');
  const status=node('p','자료를 불러오세요.',app,'ss-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const hidden=node('div','',app);hidden.hidden=true;
- const fieldTargets={작업:hidden,'선택 대화 ID (쉼표 구분)':hidden,'선택 World Book 엔트리 ID (쉼표 구분)':hidden,'연결':connection,'프리셋':connection,'루미버스 요약 넣기':referenceFields,'요청':request,'직접 요약':referenceFields,'캐릭터 포함':referenceFields,'페르소나 포함':referenceFields,'World Book 선택':worldBody,'승인한 핵심정보':identity,'입력 토큰 예산':settings,'결과 / 편집 초안':editor,'번역 언어':translation,'번역 segment JSON (수동 복구 입력)':recovery,'표시 치환 정규식':replacement,'표시 치환 문자열':replacement,'임시 PNG/JPEG 배경':excerpt,'JSON 가져오기':backup};
+ const fieldTargets={작업:hidden,'선택 World Book 엔트리 ID (쉼표 구분)':hidden,'연결':connection,'프리셋':connection,'루미버스 요약 넣기':referenceFields,'원문 일부 넣기':rawToggle,'최근 대화 수':rawRecent,'시작 번호':rawRange,'끝 번호':rawRange,'요청':request,'직접 요약':referenceFields,'캐릭터 포함':referenceFields,'페르소나 포함':referenceFields,'World Book 선택':worldBody,'승인한 핵심정보':identity,'입력 토큰 예산':settings,'결과 / 편집 초안':editor,'번역 언어':translation,'번역 segment JSON (수동 복구 입력)':recovery,'표시 치환 정규식':replacement,'표시 치환 문자열':replacement,'임시 PNG/JPEG 배경':excerpt,'JSON 가져오기':backup};
  const actionTargets={};
  const route=(target,labels)=>labels.forEach(label=>actionTargets[label]=target);
  route(worldActions,['World Books 목록','책 이전 페이지','책 다음 페이지','선택한 책 엔트리','엔트리 이전 페이지','엔트리 다음 페이지']);
@@ -89,7 +93,7 @@ export function createWorkspace(root){
  search.oninput=()=>{const q=search.value.toLocaleLowerCase();for(const card of archive.children)card.hidden=!(archiveText.get(card)||'').includes(q);};
  setPage('create');setPane('compose');
  return {
-  status,bookRows:worldBody,available:sourceBody,prompt:preview,identityView,html,archive,hidden,style,
+  status,bookRows:worldBody,raw:{panel:rawPanel,modes:rawModes,recent:rawRecent,range:rawRange,summary:rawSummary},prompt:preview,identityView,html,archive,hidden,style,
   fieldHost:label=>fieldTargets[label]||settings,actionHost:label=>actionTargets[label]||settings,
   bindMode(input){modeInput=input;input.addEventListener('input',syncMode);syncMode();},
   bindIdentity(input){identityInput=input;identities([]);},identities,
@@ -97,15 +101,8 @@ export function createWorkspace(root){
   invalidatePreview(){delete app.dataset.previewActive;preview.parentElement.open=false;},
   preview(){app.dataset.hasPreview='true';app.dataset.previewActive='true';empty.hidden=true;resultTitle.textContent='전송 내용 확인';preview.parentElement.open=true;setPane('result');},
   showResult(r,content){app.dataset.hasResult='true';app.dataset.mode=r.mode;delete app.dataset.previewActive;identities([r]);empty.hidden=true;preview.parentElement.open=false;prose.hidden=r.mode==='html';prose.textContent=content;resultTitle.textContent=r.title||({analysis:'인물 분석',story:'새로운 이야기',speak:'내면 말하기',write:'내면 쓰기',identity:'인물 핵심정보',au:'AU 초안',html:'HTML 결과'}[r.mode]||'결과');resultMeta.textContent=`${new Date(r.createdAt||Date.now()).toLocaleDateString('ko-KR')} · revision ${r.revision}${r.parentId?' · 파생본':''}`;setPage('create');setPane('result');},
-  clearResult(){delete app.dataset.hasResult;delete app.dataset.hasPreview;delete app.dataset.previewActive;empty.hidden=false;prose.hidden=true;prose.textContent='';resultTitle.textContent='아직 펼치지 않은 이야기';resultMeta.textContent='';messagePicks.replaceChildren();chatTitle.textContent='채팅이 바뀌었습니다. 자료를 다시 불러오세요.';},
-  catalog(c,input,invalidate){
-   chatTitle.textContent=c.chat?.name||c.chat?.title||'현재 채팅';messagePicks.replaceChildren();
-   const choices=(c.messages||[]).filter(m=>['user','assistant'].includes(m.role)&&!m.extra?.hidden&&typeof m.content==='string');
-   node('small',`${choices.length}개 대화 · 체크한 내용만 전달합니다.`,messagePicks,'ss-hint');
-   const selected=new Set(input.value.split(',').filter(Boolean));
-   for(const m of choices){const label=node('label','',messagePicks,'ss-message');const check=node('input','',label);check.type='checkbox';check.checked=selected.has(m.id);check.setAttribute('aria-label',`${m.role==='user'?'사용자':'캐릭터'}: ${m.content.slice(0,80)}`);const text=node('span','',label);node('small',m.role==='user'?'사용자':'캐릭터',text);node('span',m.content.slice(0,350),text);check.onchange=()=>{check.checked?selected.add(m.id):selected.delete(m.id);input.value=[...selected].join(',');invalidate();};}
-   if(!choices.length)node('p','선택할 대화가 없습니다.',messagePicks,'ss-hint');
-  },
+  clearResult(){delete app.dataset.hasResult;delete app.dataset.hasPreview;delete app.dataset.previewActive;empty.hidden=false;prose.hidden=true;prose.textContent='';resultTitle.textContent='아직 펼치지 않은 이야기';resultMeta.textContent='';chatTitle.textContent='채팅이 바뀌었습니다. 자료를 다시 불러오세요.';},
+  catalog(c){chatTitle.textContent=`${c.chat?.name||'현재 채팅'} · 루미버스 요약을 기본으로 넣습니다.`;},
   archiveCard(r,open){archiveEmpty.hidden=true;const b=node('button','',archive,'ss-archive-card');const modeName={analysis:'분석',story:'스토리',speak:'내면 말하기',write:'내면 쓰기',identity:'핵심정보',au:'AU',html:'HTML'}[r.mode]||r.mode;node('small',`${r.parentId?'파생본 · ':''}${modeName} · ${new Date(r.createdAt||Date.now()).toLocaleDateString('ko-KR')}`,b);node('strong',r.title||r.content.slice(0,45)||'제목 없는 결과',b);node('span',r.content.slice(0,120),b);archiveText.set(b,`${r.title||''}\n${r.content}`.toLocaleLowerCase());b.onclick=open;return b;},
   resetArchive(){archive.replaceChildren();archiveEmpty.hidden=false;search.value='';},
  };

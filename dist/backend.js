@@ -117,6 +117,67 @@ CURRENT TASK
     throw Error("fixed context exceeds budget");
   return { ...fit, count: await count(fit.messages), excluded: [input.presetText ? "\uCC38\uACE0 \uC790\uB8CC: \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uB300\uD654\xB7World Book\xB7Cortex\uB294 \uB123\uC9C0 \uC54A\uC74C (\uD504\uB9AC\uC14B \uBE14\uB85D\uC758 \uB9E4\uD06C\uB85C \uACB0\uACFC\uB294 \uBCC4\uB3C4 \u2014 \uC8FC\uC758 \uD655\uC778)" : "\uBCF8\uD3B8 preset / Cortex / \uC790\uB3D9 World Info / \uC120\uD0DD\uD558\uC9C0 \uC54A\uC740 \uC790\uB8CC", ...input.excluded || [], ...fit.dropped ? [`\uC624\uB798\uB41C \uB300\uD654 ${fit.dropped}\uAC1C`] : []] };
 }
+var DIALOGUE_MAX = 500;
+var dialogueEligible = (m) => ["user", "assistant"].includes(m?.role) && !m.extra?.hidden && typeof m.content === "string";
+var whole = (v) => {
+  const s = typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : "";
+  return /^\d{1,7}$/.test(s) ? Number(s) : null;
+};
+var blank = (v) => v == null || typeof v === "string" && !v.trim();
+function inspectDialogue(sel, { total, last } = {}) {
+  if (!sel || typeof sel !== "object" || !["recent", "range"].includes(sel.mode))
+    return { error: "\uC6D0\uBB38 \uC120\uD0DD \uBC29\uC2DD\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." };
+  const known = Number.isInteger(total);
+  const top = Number.isInteger(last) ? last : known ? total - 1 : null;
+  if (known && total < 1)
+    return { error: "\uC774 \uCC44\uD305\uC5D0\uB294 \uB123\uC744 \uB300\uD654\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." };
+  if (sel.mode === "recent") {
+    if (blank(sel.count))
+      return { error: "\uB123\uC744 \uCD5C\uADFC \uB300\uD654 \uC218\uB97C \uC801\uC5B4 \uC8FC\uC138\uC694." };
+    const count = whole(sel.count);
+    if (count === null || count < 1)
+      return { error: "\uCD5C\uADFC \uB300\uD654 \uC218\uB294 1 \uC774\uC0C1\uC758 \uC22B\uC790\uB85C \uC801\uC5B4 \uC8FC\uC138\uC694." };
+    if (count > DIALOGUE_MAX)
+      return { error: `\uD55C \uBC88\uC5D0 ${DIALOGUE_MAX}\uAC1C\uAE4C\uC9C0 \uB123\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.` };
+    return { error: null, mode: "recent", count, size: count, label: `\uCD5C\uADFC \uB300\uD654 ${count}\uAC1C` };
+  }
+  if (blank(sel.start) || blank(sel.end))
+    return { error: "\uC2DC\uC791 \uBC88\uD638\uC640 \uB05D \uBC88\uD638\uB97C \uBAA8\uB450 \uC801\uC5B4 \uC8FC\uC138\uC694." };
+  const a = whole(sel.start), b = whole(sel.end);
+  if (a === null || b === null)
+    return { error: "\uBC88\uD638\uB294 0 \uC774\uC0C1\uC758 \uC22B\uC790\uB85C \uC801\uC5B4 \uC8FC\uC138\uC694." };
+  const start = Math.min(a, b), end = Math.max(a, b);
+  if (top !== null && end > top)
+    return { error: `\uBC88\uD638\uB294 #0\u2013#${top} \uC0AC\uC774\uB85C \uC801\uC5B4 \uC8FC\uC138\uC694.` };
+  if (end - start + 1 > DIALOGUE_MAX)
+    return { error: `\uD55C \uBC88\uC5D0 ${DIALOGUE_MAX}\uAC1C\uAE4C\uC9C0 \uB123\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.` };
+  return { error: null, mode: "range", start, end, size: end - start + 1, label: `#${start}\u2013#${end} (${end - start + 1}\uAC1C)` };
+}
+function resolveDialogue(all, sel) {
+  const rows = (Array.isArray(all) ? all : []).map((m, i) => ({ m, n: Number.isInteger(m?.index_in_chat) ? m.index_in_chat : i })).sort((x, y) => x.n - y.n);
+  const check = inspectDialogue(sel, { total: rows.length, last: rows.length ? rows.at(-1).n : -1 });
+  if (check.error)
+    throw Error(check.error);
+  const eligible = rows.filter((x) => dialogueEligible(x.m));
+  const notes = [];
+  let picked;
+  if (check.mode === "recent") {
+    picked = eligible.slice(-check.count);
+    if (picked.length < check.count)
+      notes.push(`\uC6D0\uBB38: \uCD5C\uADFC ${check.count}\uAC1C\uB97C \uACE8\uB790\uC9C0\uB9CC \uB123\uC744 \uC218 \uC788\uB294 \uB300\uD654\uB294 ${picked.length}\uAC1C`);
+  } else {
+    const inRange = rows.filter((x) => x.n >= check.start && x.n <= check.end);
+    picked = inRange.filter((x) => dialogueEligible(x.m));
+    if (inRange.length > picked.length)
+      notes.push(`\uC6D0\uBB38 \uBC94\uC704\uC758 \uC228\uAE40\xB7\uC2DC\uC2A4\uD15C \uB300\uD654 ${inRange.length - picked.length}\uAC1C \uC81C\uC678`);
+  }
+  const { error, ...source } = check;
+  return { dialogue: picked.map(({ m }) => ({ id: m.id, role: m.role, content: m.content })), notes, source: { ...source, included: picked.length } };
+}
+function countDialogue(all) {
+  const rows = Array.isArray(all) ? all : [];
+  return { total: rows.length, hidden: rows.filter((m) => !dialogueEligible(m)).length };
+}
 function segments(content, mode) {
   text(content);
   if (mode !== "html")
@@ -548,22 +609,14 @@ function createService(api) {
     const connection = input.connectionId ? await api.connections.get(id(input.connectionId), u) : null;
     if (!connection?.model)
       throw Error("connection required");
-    const selected = new Set((input.messageIds || []).map(id));
-    const all = await api.chat.getMessages(chat.id);
     const excluded = [];
-    const dialogue = [];
-    for (const m of all) {
-      if (!selected.has(m.id))
-        continue;
-      if (m.role === "system" || m.extra?.hidden || !["user", "assistant"].includes(m.role) || typeof m.content !== "string") {
-        excluded.push(`\uC81C\uC678 \uB300\uD654 ${m.id}: system/hidden/unsupported`);
-        continue;
-      }
-      dialogue.push({ id: m.id, role: m.role, content: m.content });
+    let dialogue = [], dialogueSource = null;
+    if (input.dialogue != null) {
+      const r = resolveDialogue(await api.chat.getMessages(chat.id), input.dialogue);
+      dialogue = r.dialogue;
+      dialogueSource = r.source;
+      excluded.push(...r.notes);
     }
-    for (const m of selected)
-      if (!all.some((x) => x.id === m))
-        throw Error("selected message missing");
     const character = input.includeCharacter ? pick(await api.characters.get(chat.character_id, u), ["name", "description", "personality", "scenario"]) : null;
     const persona = input.includePersona ? pick(await api.personas.getActive(u), ["name", "description"]) : null;
     const world = [];
@@ -604,7 +657,7 @@ ${loom}` : manual;
     const fit = await assemble({ ...input, summary, presetText: presetPart?.text || "", dialogue, character, persona, world, identity, excluded }, input.budget || 8000, (m) => api.tokens.countMessages(m, { model: connection.model, userId: u }));
     if (e !== epoch(u) || !alive)
       throw Error("stale preview");
-    const p = { ...fit, notices: presetPart?.notices || [], id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, preset: presetPart?.preset || null, summarySource: { loom: !!loom, manual: !!manual.trim() }, identityId: input.identityId || null, createdAt: Date.now() };
+    const p = { ...fit, notices: presetPart?.notices || [], id: crypto.randomUUID(), user: u, epoch: e, mode: input.mode, chatId: chat.id, connectionId: connection.id, model: connection.model, preset: presetPart?.preset || null, summarySource: { loom: !!loom, manual: !!manual.trim() }, dialogueSource, identityId: input.identityId || null, createdAt: Date.now() };
     if (previews.size > 100)
       previews.delete(previews.keys().next().value);
     previews.set(p.id, p);
@@ -792,7 +845,13 @@ ${loom}` : manual;
       presetsError = e.message;
     }
     const saved = await read(u, "settings.json");
-    return { chat, connections: await api.connections.list(u), messages: chat ? await api.chat.getMessages(chat.id) : [], presets, presetsError, hasLoomSummary: !!loomSummary(chat), settings: { presetId: typeof saved?.presetId === "string" ? saved.presetId : "" } };
+    return { chat: chat ? { id: chat.id, name: typeof chat.name === "string" ? chat.name : "" } : null, connections: await api.connections.list(u), presets, presetsError, hasLoomSummary: !!loomSummary(chat), settings: { presetId: typeof saved?.presetId === "string" ? saved.presetId : "" } };
+  }
+  async function messageCount(u) {
+    const chat = await api.chats.getActive(u);
+    if (!chat)
+      throw Error("active chat required");
+    return { chatId: chat.id, ...countDialogue(await api.chat.getMessages(chat.id)) };
   }
   async function saveSettings(u, { presetId = "" } = {}) {
     if (presetId !== "")
@@ -800,7 +859,7 @@ ${loom}` : manual;
     await write(u, "settings.json", { presetId });
     return { presetId };
   }
-  return { saveSettings, books, entries, approveIdentity, translationPreview, translationRun, preview, run, cancel, list, edit, translate, importRecords, remap, catalog, dispose() {
+  return { saveSettings, messageCount, books, entries, approveIdentity, translationPreview, translationRun, preview, run, cancel, list, edit, translate, importRecords, remap, catalog, dispose() {
     alive = false;
     cancelAll();
     off.forEach((f) => f());
@@ -828,6 +887,9 @@ function install(api) {
           break;
         case "catalog":
           result = await service.catalog(userId);
+          break;
+        case "messageCount":
+          result = await service.messageCount(userId);
           break;
         case "saveSettings":
           result = await service.saveSettings(userId, a);

@@ -14,6 +14,43 @@ export async function assemble(input,limit,count){
  if(fit.tokens>limit)throw Error('fixed context exceeds budget');
  return {...fit,count:await count(fit.messages),excluded:[input.presetText?'참고 자료: 선택하지 않은 대화·World Book·Cortex는 넣지 않음 (프리셋 블록의 매크로 결과는 별도 — 주의 확인)':'본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
 }
+// Optional raw dialogue is chosen by numbers only (latest N, or a #start–#end range as numbered in the
+// host chat view), adapted from Marinara's summary range picker. The panel never receives message bodies;
+// the backend resolves the selection against the current chat at preview time and re-validates it.
+export const DIALOGUE_MAX=500;
+export const dialogueEligible=m=>['user','assistant'].includes(m?.role)&&!m.extra?.hidden&&typeof m.content==='string';
+const whole=v=>{const s=typeof v==='number'?String(v):typeof v==='string'?v.trim():'';return /^\d{1,7}$/.test(s)?Number(s):null;};
+const blank=v=>v==null||(typeof v==='string'&&!v.trim());
+/** Validate a numeric selection. `total` is the chat length; `last` the highest message number (default total-1). */
+export function inspectDialogue(sel,{total,last}={}){
+ if(!sel||typeof sel!=='object'||!['recent','range'].includes(sel.mode))return {error:'원문 선택 방식이 올바르지 않습니다.'};
+ const known=Number.isInteger(total);const top=Number.isInteger(last)?last:known?total-1:null;
+ if(known&&total<1)return {error:'이 채팅에는 넣을 대화가 없습니다.'};
+ if(sel.mode==='recent'){
+  if(blank(sel.count))return {error:'넣을 최근 대화 수를 적어 주세요.'};
+  const count=whole(sel.count);if(count===null||count<1)return {error:'최근 대화 수는 1 이상의 숫자로 적어 주세요.'};
+  if(count>DIALOGUE_MAX)return {error:`한 번에 ${DIALOGUE_MAX}개까지 넣을 수 있습니다.`};
+  return {error:null,mode:'recent',count,size:count,label:`최근 대화 ${count}개`};
+ }
+ if(blank(sel.start)||blank(sel.end))return {error:'시작 번호와 끝 번호를 모두 적어 주세요.'};
+ const a=whole(sel.start),b=whole(sel.end);if(a===null||b===null)return {error:'번호는 0 이상의 숫자로 적어 주세요.'};
+ const start=Math.min(a,b),end=Math.max(a,b);
+ if(top!==null&&end>top)return {error:`번호는 #0–#${top} 사이로 적어 주세요.`};
+ if(end-start+1>DIALOGUE_MAX)return {error:`한 번에 ${DIALOGUE_MAX}개까지 넣을 수 있습니다.`};
+ return {error:null,mode:'range',start,end,size:end-start+1,label:`#${start}–#${end} (${end-start+1}개)`};
+}
+/** Resolve a numeric selection to dialogue rows, oldest first. Throws when the selection does not fit the chat. */
+export function resolveDialogue(all,sel){
+ const rows=(Array.isArray(all)?all:[]).map((m,i)=>({m,n:Number.isInteger(m?.index_in_chat)?m.index_in_chat:i})).sort((x,y)=>x.n-y.n);
+ const check=inspectDialogue(sel,{total:rows.length,last:rows.length?rows.at(-1).n:-1});if(check.error)throw Error(check.error);
+ const eligible=rows.filter(x=>dialogueEligible(x.m));const notes=[];let picked;
+ if(check.mode==='recent'){picked=eligible.slice(-check.count);if(picked.length<check.count)notes.push(`원문: 최근 ${check.count}개를 골랐지만 넣을 수 있는 대화는 ${picked.length}개`);}
+ else{const inRange=rows.filter(x=>x.n>=check.start&&x.n<=check.end);picked=inRange.filter(x=>dialogueEligible(x.m));if(inRange.length>picked.length)notes.push(`원문 범위의 숨김·시스템 대화 ${inRange.length-picked.length}개 제외`);}
+ const {error,...source}=check;
+ return {dialogue:picked.map(({m})=>({id:m.id,role:m.role,content:m.content})),notes,source:{...source,included:picked.length}};
+}
+/** Counts only — never bodies. `hidden` is every message that cannot be included (hidden, system, non-text). */
+export function countDialogue(all){const rows=Array.isArray(all)?all:[];return {total:rows.length,hidden:rows.filter(m=>!dialogueEligible(m)).length};}
 export function segments(content,mode){
  text(content);if(mode!=='html')return content.split(/\n\n/).map((t,i)=>({id:'s'+i,text:t}));
  const out=[];const re=/<!--[\s\S]*?-->|<![^>]*>|<(script|style|code|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>|<[^>]*>/gi;let end=0,m;

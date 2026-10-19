@@ -148,6 +148,41 @@ var text = (v, max = 1e5) => {
     throw Error("invalid text/size");
   return v;
 };
+var DIALOGUE_MAX = 500;
+var whole = (v) => {
+  const s = typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : "";
+  return /^\d{1,7}$/.test(s) ? Number(s) : null;
+};
+var blank = (v) => v == null || typeof v === "string" && !v.trim();
+function inspectDialogue(sel, { total, last } = {}) {
+  if (!sel || typeof sel !== "object" || !["recent", "range"].includes(sel.mode))
+    return { error: "원문 선택 방식이 올바르지 않습니다." };
+  const known = Number.isInteger(total);
+  const top = Number.isInteger(last) ? last : known ? total - 1 : null;
+  if (known && total < 1)
+    return { error: "이 채팅에는 넣을 대화가 없습니다." };
+  if (sel.mode === "recent") {
+    if (blank(sel.count))
+      return { error: "넣을 최근 대화 수를 적어 주세요." };
+    const count = whole(sel.count);
+    if (count === null || count < 1)
+      return { error: "최근 대화 수는 1 이상의 숫자로 적어 주세요." };
+    if (count > DIALOGUE_MAX)
+      return { error: `한 번에 ${DIALOGUE_MAX}개까지 넣을 수 있습니다.` };
+    return { error: null, mode: "recent", count, size: count, label: `최근 대화 ${count}개` };
+  }
+  if (blank(sel.start) || blank(sel.end))
+    return { error: "시작 번호와 끝 번호를 모두 적어 주세요." };
+  const a = whole(sel.start), b = whole(sel.end);
+  if (a === null || b === null)
+    return { error: "번호는 0 이상의 숫자로 적어 주세요." };
+  const start = Math.min(a, b), end = Math.max(a, b);
+  if (top !== null && end > top)
+    return { error: `번호는 #0–#${top} 사이로 적어 주세요.` };
+  if (end - start + 1 > DIALOGUE_MAX)
+    return { error: `한 번에 ${DIALOGUE_MAX}개까지 넣을 수 있습니다.` };
+  return { error: null, mode: "range", start, end, size: end - start + 1, label: `#${start}–#${end} (${end - start + 1}개)` };
+}
 function segments(content, mode) {
   text(content);
   if (mode !== "html")
@@ -188,7 +223,7 @@ var workspaceStyles = `
 .ss-composer{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--ss-line)}.ss-compose-scroll{flex:1;overflow:auto;padding:20px 18px;scrollbar-width:thin;overscroll-behavior:contain}
 .ss-section-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:7px}.ss-section-heading h2{font-size:13px}.ss-section-heading small{font-size:10px}
 .ss-mode-picker{display:flex;gap:3px;background:var(--ss-input);border:1px solid var(--ss-line);border-radius:8px;padding:3px;margin-bottom:17px}.ss-app .ss-mode-picker button{flex:1;border:0;background:transparent;padding:6px 4px;min-height:31px;font-size:11px;color:var(--ss-muted)}.ss-app .ss-mode-picker button[aria-pressed=true]{background:var(--ss-paper);color:var(--ss-ink);box-shadow:0 1px 3px #0002}
-.ss-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.ss-field>span{font-size:12px;font-weight:550}.ss-field:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:8px;margin:8px 0;font-weight:400}.ss-field:has(input[type=checkbox])>span{order:1;font-weight:400}
+.ss-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.ss-field>span{font-size:12px;font-weight:550}.ss-field:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:8px;margin:2px 0;min-height:44px;cursor:pointer;font-weight:400}.ss-field:has(input[type=checkbox])>span{order:1;font-weight:400}
 .ss-field textarea[aria-label=요청]{min-height:150px;line-height:1.8}
 .ss-details{margin-top:14px;border-top:1px solid var(--ss-line)}.ss-details>summary{display:flex;align-items:center;gap:9px;cursor:pointer;padding:13px 0;font-size:12px;font-weight:600;list-style:none}.ss-details>summary::after{content:'›';margin-left:auto;color:var(--ss-muted);font-size:17px;line-height:1}.ss-details[open]>summary::after{transform:rotate(90deg)}.ss-details>summary::-webkit-details-marker{display:none}.ss-details-body{padding:0 0 12px}.ss-details-body>.ss-hint{margin:7px 0 12px}
 .ss-inline-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ss-inline-actions:empty{display:none}.ss-app .ss-inline-actions button{font-size:11px;min-height:30px;padding:5px 9px}
@@ -200,7 +235,7 @@ var workspaceStyles = `
 .ss-app:not([data-has-result=true]) .ss-reader>.ss-inline-actions,.ss-app:not([data-has-result=true]) .ss-reader>.ss-details:not([data-ui=prompt-details]),.ss-app:not([data-has-preview=true]) [data-ui=prompt-details]{display:none}
 .ss-app:not([data-mode=identity]) [data-ui=identity-details]{display:none}
 .ss-app pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.65 ui-monospace,monospace;max-height:330px;overflow:auto;padding:10px;background:var(--ss-input);border:1px solid var(--ss-line);border-radius:6px;margin:0}
-.ss-message-picks{max-height:240px;overflow:auto}.ss-message{display:flex;gap:9px;padding:10px 0;border-bottom:1px solid var(--ss-line);cursor:pointer;font-size:12px}.ss-message>span{display:flex;flex-direction:column;gap:4px;white-space:pre-wrap;overflow-wrap:anywhere}.ss-message>span>small{font-size:10px}.ss-message:has(input:checked){background:var(--ss-tint)}
+.ss-app [data-ui=loom-hint]:not([hidden]){display:block;margin:0 0 12px}.ss-raw{margin:4px 0 14px}.ss-raw-panel{border:1px solid var(--ss-line);border-radius:8px;padding:10px;margin-top:4px}.ss-raw-panel[hidden],.ss-raw-panel [hidden]{display:none}.ss-segmented{display:flex;gap:3px;background:var(--ss-input);border:1px solid var(--ss-line);border-radius:8px;padding:3px;margin-bottom:10px}.ss-app .ss-segmented button{flex:1;border:0;background:transparent;min-height:44px;font-size:12px;color:var(--ss-muted)}.ss-app .ss-segmented button[aria-pressed=true]{background:var(--ss-paper);color:var(--ss-ink);box-shadow:0 1px 3px #0002}.ss-range{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ss-app .ss-raw-panel input{min-height:44px}.ss-raw-panel .ss-field{margin-bottom:8px}.ss-raw-panel>.ss-hint{margin:0;white-space:pre-line}
 .ss-page{height:100%;overflow:auto;padding:22px 20px;scrollbar-width:thin}.ss-page>h2{font-size:20px;margin-bottom:7px}.ss-page>.ss-hint{margin-bottom:19px}.ss-page>.ss-inline-actions{margin-bottom:12px}.ss-page>input[type=search]{margin-bottom:14px}
 .ss-archive{display:grid;gap:10px}.ss-app .ss-archive-card{display:flex;flex-direction:column;gap:7px;width:100%;padding:15px 16px;text-align:left;background:var(--ss-paper);border:1px solid var(--ss-line);border-radius:9px;overflow-wrap:anywhere}.ss-archive-card small{font-size:10px}.ss-archive-card strong{font-size:13px;font-weight:650}.ss-archive-card>span{font-size:12px;line-height:1.7;color:var(--ss-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ss-status{flex:none;padding:8px 16px;border-top:1px solid var(--ss-line);font-size:10px;color:var(--ss-muted);line-height:1.6;max-height:75px;overflow:auto;overflow-wrap:anywhere;background:var(--ss-paper)}
@@ -295,17 +330,25 @@ function createWorkspace(root) {
   const reference = node("details", "", scroll, "ss-details");
   node("summary", "참고 자료", reference);
   const referenceBody = node("div", "", reference, "ss-details-body");
-  const chatTitle = node("p", "자료를 불러와 참고할 대화를 선택하세요.", referenceBody, "ss-hint");
-  const messagePicks = node("div", "", referenceBody, "ss-message-picks");
-  messagePicks.dataset.ui = "message-picks";
+  const chatTitle = node("p", "현재 채팅의 루미버스 요약을 기본으로 넣습니다.", referenceBody, "ss-hint");
   const referenceFields = node("div", "", referenceBody);
+  const raw = node("div", "", referenceBody, "ss-raw");
+  const rawToggle = node("div", "", raw);
+  const rawPanel = node("div", "", raw, "ss-raw-panel");
+  rawPanel.dataset.ui = "raw-dialogue";
+  rawPanel.hidden = true;
+  const rawModes = node("div", "", rawPanel, "ss-segmented");
+  rawModes.setAttribute("role", "group");
+  rawModes.setAttribute("aria-label", "원문 고르는 방식");
+  const rawRecent = node("div", "", rawPanel), rawRange = node("div", "", rawPanel, "ss-range");
+  rawRange.hidden = true;
+  const rawSummary = node("p", "", rawPanel, "ss-hint");
+  rawSummary.dataset.ui = "raw-summary";
+  rawSummary.setAttribute("aria-live", "polite");
   const world = node("details", "", referenceBody, "ss-details");
   node("summary", "World Book 엔트리", world);
   const worldBody = node("div", "", world, "ss-details-body");
   const worldActions = node("div", "", worldBody, "ss-inline-actions");
-  const source = node("details", "", referenceBody, "ss-details");
-  node("summary", "불러온 대화 원문", source);
-  const sourceBody = node("div", "", source, "ss-details-body");
   const identity = node("div", "", scroll);
   const generate = node("div", "", panels.create, "ss-generate");
   node("small", "미리보기에서 전송 내용을 확인한 뒤 생성하세요.", generate, "ss-hint");
@@ -363,7 +406,7 @@ function createWorkspace(root) {
   status.setAttribute("aria-live", "polite");
   const hidden = node("div", "", app);
   hidden.hidden = true;
-  const fieldTargets = { 작업: hidden, "선택 대화 ID (쉼표 구분)": hidden, "선택 World Book 엔트리 ID (쉼표 구분)": hidden, "연결": connection, "프리셋": connection, "루미버스 요약 넣기": referenceFields, "요청": request, "직접 요약": referenceFields, "캐릭터 포함": referenceFields, "페르소나 포함": referenceFields, "World Book 선택": worldBody, "승인한 핵심정보": identity, "입력 토큰 예산": settings, "결과 / 편집 초안": editor, "번역 언어": translation, "번역 segment JSON (수동 복구 입력)": recovery, "표시 치환 정규식": replacement, "표시 치환 문자열": replacement, "임시 PNG/JPEG 배경": excerpt, "JSON 가져오기": backup };
+  const fieldTargets = { 작업: hidden, "선택 World Book 엔트리 ID (쉼표 구분)": hidden, "연결": connection, "프리셋": connection, "루미버스 요약 넣기": referenceFields, "원문 일부 넣기": rawToggle, "최근 대화 수": rawRecent, "시작 번호": rawRange, "끝 번호": rawRange, "요청": request, "직접 요약": referenceFields, "캐릭터 포함": referenceFields, "페르소나 포함": referenceFields, "World Book 선택": worldBody, "승인한 핵심정보": identity, "입력 토큰 예산": settings, "결과 / 편집 초안": editor, "번역 언어": translation, "번역 segment JSON (수동 복구 입력)": recovery, "표시 치환 정규식": replacement, "표시 치환 문자열": replacement, "임시 PNG/JPEG 배경": excerpt, "JSON 가져오기": backup };
   const actionTargets = {};
   const route = (target, labels) => labels.forEach((label) => actionTargets[label] = target);
   route(worldActions, ["World Books 목록", "책 이전 페이지", "책 다음 페이지", "선택한 책 엔트리", "엔트리 이전 페이지", "엔트리 다음 페이지"]);
@@ -427,7 +470,7 @@ function createWorkspace(root) {
   return {
     status,
     bookRows: worldBody,
-    available: sourceBody,
+    raw: { panel: rawPanel, modes: rawModes, recent: rawRecent, range: rawRange, summary: rawSummary },
     prompt: preview,
     identityView,
     html,
@@ -484,32 +527,10 @@ function createWorkspace(root) {
       prose.textContent = "";
       resultTitle.textContent = "아직 펼치지 않은 이야기";
       resultMeta.textContent = "";
-      messagePicks.replaceChildren();
       chatTitle.textContent = "채팅이 바뀌었습니다. 자료를 다시 불러오세요.";
     },
-    catalog(c, input, invalidate) {
-      chatTitle.textContent = c.chat?.name || c.chat?.title || "현재 채팅";
-      messagePicks.replaceChildren();
-      const choices = (c.messages || []).filter((m) => ["user", "assistant"].includes(m.role) && !m.extra?.hidden && typeof m.content === "string");
-      node("small", `${choices.length}개 대화 · 체크한 내용만 전달합니다.`, messagePicks, "ss-hint");
-      const selected = new Set(input.value.split(",").filter(Boolean));
-      for (const m of choices) {
-        const label = node("label", "", messagePicks, "ss-message");
-        const check = node("input", "", label);
-        check.type = "checkbox";
-        check.checked = selected.has(m.id);
-        check.setAttribute("aria-label", `${m.role === "user" ? "사용자" : "캐릭터"}: ${m.content.slice(0, 80)}`);
-        const text2 = node("span", "", label);
-        node("small", m.role === "user" ? "사용자" : "캐릭터", text2);
-        node("span", m.content.slice(0, 350), text2);
-        check.onchange = () => {
-          check.checked ? selected.add(m.id) : selected.delete(m.id);
-          input.value = [...selected].join(",");
-          invalidate();
-        };
-      }
-      if (!choices.length)
-        node("p", "선택할 대화가 없습니다.", messagePicks, "ss-hint");
+    catalog(c) {
+      chatTitle.textContent = `${c.chat?.name || "현재 채팅"} · 루미버스 요약을 기본으로 넣습니다.`;
     },
     archiveCard(r, open) {
       archiveEmpty.hidden = true;
@@ -565,33 +586,114 @@ function setup(ctx) {
   const noPreset = el("option", "없음", presetSelect);
   noPreset.value = "";
   el("small", "classic 엔진 프리셋의 켜진 일반 블록만 지원합니다. 봉인·append 블록과 호스트 자료 매크로가 든 블록은 빠지며(목록에 부분 지원 또는 적용 안 됨으로 표시), 임베딩을 켰다면 최근 대화가 임베딩 공급자로 갈 수 있습니다. 미리보기의 주의 사항(notices)을 확인하세요.", ui.fieldHost("프리셋")).className = "ss-hint";
-  const ids = field("선택 대화 ID (쉼표 구분)");
   const world = field("선택 World Book 엔트리 ID (쉼표 구분)");
   const book = field("World Book 선택", "select"), bookRows = el("div", "", ui.bookRows);
   let bookOffset = 0, entryOffset = 0;
   const chosenBooks = new Set;
+  const loomSummary = field("루미버스 요약 넣기");
+  loomSummary.type = "checkbox";
+  loomSummary.checked = true;
+  const loomHint = el("small", "이 채팅에는 루미버스 요약이 없습니다. 아래 ‘직접 요약’에 줄거리를 적어 넣을 수 있어요.", ui.fieldHost("루미버스 요약 넣기"));
+  loomHint.className = "ss-hint";
+  loomHint.dataset.ui = "loom-hint";
+  loomHint.hidden = true;
+  const summary = field("직접 요약", "textarea");
   const character = field("캐릭터 포함");
   character.type = "checkbox";
   character.checked = true;
   const persona = field("페르소나 포함");
   persona.type = "checkbox";
-  const loomSummary = field("루미버스 요약 넣기");
-  loomSummary.type = "checkbox";
-  const summary = field("직접 요약", "textarea"), identity = field("승인한 핵심정보", "select"), request = field("요청", "textarea"), budget = field("입력 토큰 예산");
+  const rawToggle = field("원문 일부 넣기");
+  rawToggle.type = "checkbox";
+  let rawMode = "recent", rawCount = null, chatGen = 0;
+  const numeric = (e) => {
+    e.type = "text";
+    e.inputMode = "numeric";
+    e.setAttribute("inputmode", "numeric");
+    e.pattern = "[0-9]*";
+    e.autocomplete = "off";
+    return e;
+  };
+  const rawButtons = [["recent", "최근 N개"], ["range", "번호 범위"]].map(([key, label]) => {
+    const b = el("button", label, ui.raw.modes);
+    b.type = "button";
+    b.dataset.rawMode = key;
+    b.onclick = () => {
+      rawMode = key;
+      syncRaw();
+      invalidate();
+    };
+    return b;
+  });
+  const recentCount = numeric(field("최근 대화 수")), rangeStart = numeric(field("시작 번호")), rangeEnd = numeric(field("끝 번호"));
+  const rawSelection = () => rawToggle.checked ? rawMode === "recent" ? { mode: "recent", count: recentCount.value } : { mode: "range", start: rangeStart.value, end: rangeEnd.value } : null;
+  function syncRaw() {
+    ui.raw.panel.hidden = !rawToggle.checked;
+    ui.raw.recent.hidden = rawMode !== "recent";
+    ui.raw.range.hidden = rawMode !== "range";
+    for (const b of rawButtons)
+      b.setAttribute("aria-pressed", String(b.dataset.rawMode === rawMode));
+    if (!rawToggle.checked) {
+      ui.raw.summary.textContent = "";
+      return;
+    }
+    if (!rawCount) {
+      ui.raw.summary.textContent = "대화 수를 확인하는 중…";
+      return;
+    }
+    const { total, hidden } = rawCount;
+    const head = total ? `전체 ${total}개 (숨김·시스템 ${hidden}개는 빠짐) · 번호는 채팅의 #0–#${total - 1}` : "이 채팅에는 대화가 없습니다.";
+    const c = inspectDialogue(rawSelection(), { total });
+    ui.raw.summary.textContent = `${head}
+${c.error ? "⚠ " + c.error : `넣을 원문: ${c.label} · 예산이 모자라면 오래된 대화부터 뺍니다.`}`;
+  }
+  const loadCount = async () => {
+    const gen = chatGen;
+    ui.raw.summary.textContent = "대화 수를 확인하는 중…";
+    try {
+      const c = await rpc("messageCount", {}, { epochBound: false });
+      if (disposed || gen !== chatGen || !rawToggle.checked)
+        return;
+      rawCount = c;
+      const usable = Math.max(1, c.total - c.hidden);
+      if (!recentCount.value)
+        recentCount.value = String(Math.min(20, usable));
+      if (!rangeStart.value && !rangeEnd.value) {
+        rangeStart.value = String(Math.max(0, c.total - 20));
+        rangeEnd.value = String(Math.max(0, c.total - 1));
+      }
+      syncRaw();
+    } catch (e) {
+      if (!disposed && gen === chatGen)
+        ui.raw.summary.textContent = `대화 수를 확인하지 못했습니다: ${e.message}`;
+    }
+  };
+  rawToggle.addEventListener("change", () => {
+    if (rawToggle.checked) {
+      syncRaw();
+      if (!rawCount)
+        loadCount();
+    } else {
+      rawCount = null;
+      syncRaw();
+    }
+  });
+  for (const e of [recentCount, rangeStart, rangeEnd])
+    e.addEventListener("input", syncRaw);
+  const identity = field("승인한 핵심정보", "select"), request = field("요청", "textarea"), budget = field("입력 토큰 예산");
   budget.type = "number";
   budget.value = "8000";
   const initialConnection = el("option", "자료를 불러와 연결을 선택하세요.", connection);
   initialConnection.value = "";
-  const available = el("pre", "", ui.available);
   const prompt = el("pre", "", ui.prompt);
   prompt.dataset.testid = "prompt";
   const identityView = el("pre", "", ui.identityView);
   const output = field("결과 / 편집 초안", "textarea");
   output.rows = 12;
   const htmlRoot = ui.html;
-  const rpc = (op, args = {}) => new Promise((resolve, reject) => {
+  const rpc = (op, args = {}, { epochBound = true } = {}) => new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
-    const issuedEpoch = epoch;
+    const issuedEpoch = epochBound ? epoch : null;
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(Error("응답 시간 초과"));
@@ -605,7 +707,7 @@ function setup(ctx) {
       return;
     clearTimeout(p.timer);
     pending.delete(m.id);
-    disposed || p.issuedEpoch !== epoch ? p.reject(Error("stale result")) : m.error ? p.reject(Error(m.error)) : p.resolve(m.result);
+    disposed || p.issuedEpoch !== null && p.issuedEpoch !== epoch ? p.reject(Error("stale result")) : m.error ? p.reject(Error(m.error)) : p.resolve(m.result);
   });
   const actions = new Map;
   const action = (label, fn) => {
@@ -635,17 +737,23 @@ function setup(ctx) {
     ui.invalidatePreview();
     prompt.textContent = "입력이 변경되었습니다. 다시 미리보세요.";
   };
-  for (const e of [mode, connection, presetSelect, loomSummary, ids, world, character, persona, summary, identity, request, budget])
+  for (const e of [mode, connection, presetSelect, loomSummary, rawToggle, recentCount, rangeStart, rangeEnd, world, character, persona, summary, identity, request, budget])
     e.addEventListener("input", invalidate);
   const eventOff = [ctx.events.on("CHAT_SWITCHED", () => {
     invalidate();
+    chatGen++;
+    rawToggle.checked = false;
+    rawCount = null;
+    recentCount.value = "";
+    rangeStart.value = "";
+    rangeEnd.value = "";
+    syncRaw();
+    loomHint.hidden = true;
     record = null;
     output.value = "";
-    ids.value = "";
     world.value = "";
     chosenBooks.clear();
     bookRows.replaceChildren();
-    available.textContent = "";
     ui.clearResult();
     frame?.destroy();
     frame = null;
@@ -738,9 +846,6 @@ function setup(ctx) {
       if (x.id === ctx.state?.get("connections.active")?.activeProfileId)
         o.selected = true;
     }
-    available.textContent = c.messages.map((m) => `${m.role}${m.extra?.hidden ? " (숨김: 제외)" : ""}
-${m.content}`).join(`
-`);
     presetSelect.replaceChildren(noPreset);
     for (const x of c.presets || []) {
       const lv = x.support?.level;
@@ -749,9 +854,9 @@ ${m.content}`).join(`
       o.disabled = lv === "unsupported";
     }
     presetSelect.value = (c.presets || []).some((x) => x.id === c.settings?.presetId && x.support?.level !== "unsupported") ? c.settings.presetId : "";
-    loomSummary.checked = !!c.hasLoomSummary;
-    ui.catalog(c, ids, invalidate);
-    status.textContent = "참고 자료에서 포함할 대화를 선택하세요." + (c.presetsError ? ` (프리셋 목록을 불러오지 못했습니다: ${c.presetsError})` : "");
+    loomHint.hidden = !!c.hasLoomSummary;
+    ui.catalog(c);
+    status.textContent = (c.hasLoomSummary ? "루미버스 요약을 기본으로 넣습니다." : "이 채팅에는 루미버스 요약이 없습니다. 필요하면 직접 요약을 적어 주세요.") + " 원문은 참고 자료의 ‘원문 일부 넣기’에서 번호로 고를 수 있습니다." + (c.presetsError ? ` (프리셋 목록을 불러오지 못했습니다: ${c.presetsError})` : "");
     invalidate();
   });
   presetSelect.addEventListener("change", () => {
@@ -762,11 +867,11 @@ ${m.content}`).join(`
   });
   action("프롬프트 미리보기", async () => {
     const e = epoch;
-    const p = await rpc("preview", { mode: mode.value, connectionId: connection.value, messageIds: ids.value.split(",").map((s) => s.trim()).filter(Boolean), worldBookIds: [...chosenBooks], worldIds: world.value.split(",").map((s) => s.trim()).filter(Boolean), presetId: presetSelect.value, includeLoomSummary: loomSummary.checked, includeCharacter: character.checked, includePersona: persona.checked, summary: summary.value, identityId: identity.value, request: request.value, budget: Number(budget.value) });
+    const p = await rpc("preview", { mode: mode.value, connectionId: connection.value, dialogue: rawSelection(), worldBookIds: [...chosenBooks], worldIds: world.value.split(",").map((s) => s.trim()).filter(Boolean), presetId: presetSelect.value, includeLoomSummary: loomSummary.checked, includeCharacter: character.checked, includePersona: persona.checked, summary: summary.value, identityId: identity.value, request: request.value, budget: Number(budget.value) });
     if (e !== epoch || disposed)
       return;
     preview = p;
-    prompt.textContent = JSON.stringify({ connection: p.connectionId, model: p.model, preset: p.preset, summarySource: p.summarySource, count: p.count, notices: p.notices, excluded: p.excluded, messages: p.messages }, null, 2);
+    prompt.textContent = JSON.stringify({ connection: p.connectionId, model: p.model, preset: p.preset, summarySource: p.summarySource, dialogueSource: p.dialogueSource, count: p.count, notices: p.notices, excluded: p.excluded, messages: p.messages }, null, 2);
     ui.preview();
     run.disabled = false;
     status.textContent = "실제 전송 입력을 확인한 뒤 생성하세요.";
@@ -930,6 +1035,7 @@ ${m.content}`).join(`
     if (!disposed && e === epoch)
       download("side-story-excerpt.png", png);
   });
+  syncRaw();
   ui.bindMode(mode);
   ui.bindIdentity(identity);
   ui.onNavigate((page) => {

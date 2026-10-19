@@ -1,5 +1,5 @@
 import {staticHTML,decodeEntities} from './presentation.js';
-import {assemble,id,text,childRecord,segments,validateTranslation,validateImport,validateIdentity} from './core.js';
+import {assemble,id,text,childRecord,segments,validateTranslation,validateImport,validateIdentity,resolveDialogue,countDialogue} from './core.js';
 import {SUPPORTED_ENGINE,presetEngine,classifyBlocks,supportOf,presetSupport,PRESET_MACRO_NOTICE,PRESET_NOT_APPLIED_NOTICE,EMBEDDING_NOTICE} from './preset-scope.js';
 const pick=(o,keys)=>o?Object.fromEntries(keys.filter(k=>typeof o[k]==='string').map(k=>[k,o[k]])):null;
 export function createService(api){
@@ -47,9 +47,10 @@ export function createService(api){
  id(u);if(!alive)throw Error('disabled');const e=epoch(u);epochs.set(u,e);const chat=await api.chats.getActive(u);if(!chat)throw Error('active chat required');
  const connection=input.connectionId?await api.connections.get(id(input.connectionId),u):null;
  if(!connection?.model)throw Error('connection required');
- const selected=new Set((input.messageIds||[]).map(id));const all=await api.chat.getMessages(chat.id);const excluded=[];const dialogue=[];
- for(const m of all){if(!selected.has(m.id))continue;if(m.role==='system'||m.extra?.hidden||!['user','assistant'].includes(m.role)||typeof m.content!=='string'){excluded.push(`제외 대화 ${m.id}: system/hidden/unsupported`);continue;}dialogue.push({id:m.id,role:m.role,content:m.content});}
- for(const m of selected)if(!all.some(x=>x.id===m))throw Error('selected message missing');
+ // Raw dialogue is optional and off by default: messages are read only when a numeric selection is given,
+ // and the selection is re-validated against the chat as it is now.
+ const excluded=[];let dialogue=[],dialogueSource=null;
+ if(input.dialogue!=null){const r=resolveDialogue(await api.chat.getMessages(chat.id),input.dialogue);dialogue=r.dialogue;dialogueSource=r.source;excluded.push(...r.notes);}
  const character=input.includeCharacter?pick(await api.characters.get(chat.character_id,u),['name','description','personality','scenario']):null;
  const persona=input.includePersona?pick(await api.personas.getActive(u),['name','description']):null;
  const world=[];for(const entryId of [...new Set(input.worldIds||[])]){const entry=await api.world_books.entries.get(id(entryId),u);if(!entry)throw Error('world entry missing');if(!(input.worldBookIds||[]).includes(entry.world_book_id)||!await api.world_books.get(id(entry.world_book_id),u))throw Error('explicit accessible world book required');world.push({id:entry.id,content:entry.content});}
@@ -60,7 +61,7 @@ export function createService(api){
  let presetPart=null;if(input.presetId){presetPart=await presetInstructions(u,chat,connection,input.presetId);excluded.push(...presetPart.excluded);}
  const fit=await assemble({...input,summary,presetText:presetPart?.text||'',dialogue,character,persona,world,identity,excluded},input.budget||8000,m=>api.tokens.countMessages(m,{model:connection.model,userId:u}));
  if(e!==epoch(u)||!alive)throw Error('stale preview');
- const p={...fit,notices:presetPart?.notices||[],id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,preset:presetPart?.preset||null,summarySource:{loom:!!loom,manual:!!manual.trim()},identityId:input.identityId||null,createdAt:Date.now()};
+ const p={...fit,notices:presetPart?.notices||[],id:crypto.randomUUID(),user:u,epoch:e,mode:input.mode,chatId:chat.id,connectionId:connection.id,model:connection.model,preset:presetPart?.preset||null,summarySource:{loom:!!loom,manual:!!manual.trim()},dialogueSource,identityId:input.identityId||null,createdAt:Date.now()};
  if(previews.size>100)previews.delete(previews.keys().next().value);previews.set(p.id,p);return structuredClone(p);
  }
  // Raw generation does not fall back to the connection's model, so pass it explicitly.
@@ -93,7 +94,9 @@ export function createService(api){
  async function remap(u,rid){return serial(u,async()=>{const r=await read(u,`records/${id(rid)}.json`);if(!r)throw Error('record missing');const chat=await api.chats.getActive(u);if(!chat)throw Error('chat required');return save(u,{...r,revision:r.revision+1,host:{chatId:chat.id,characterId:chat.character_id},needsRemap:false});});}
  async function catalog(u){const chat=await api.chats.getActive(u);let presets=[],presetsError=null;
  try{const r=await api.presets.list({limit:200,userId:u});presets=(r?.data||[]).filter(p=>typeof p?.id==='string').map(p=>({id:p.id,name:typeof p.name==='string'&&p.name?p.name:p.id,support:presetSupport(p)}));}catch(e){presetsError=e.message;}
- const saved=await read(u,'settings.json');return {chat,connections:await api.connections.list(u),messages:chat?await api.chat.getMessages(chat.id):[],presets,presetsError,hasLoomSummary:!!loomSummary(chat),settings:{presetId:typeof saved?.presetId==='string'?saved.presetId:''}};}
+ const saved=await read(u,'settings.json');return {chat:chat?{id:chat.id,name:typeof chat.name==='string'?chat.name:''}:null,connections:await api.connections.list(u),presets,presetsError,hasLoomSummary:!!loomSummary(chat),settings:{presetId:typeof saved?.presetId==='string'?saved.presetId:''}};}
+ // Message count for the optional raw-dialogue picker: numbers only, no bodies leave the backend.
+ async function messageCount(u){const chat=await api.chats.getActive(u);if(!chat)throw Error('active chat required');return {chatId:chat.id,...countDialogue(await api.chat.getMessages(chat.id))};}
  async function saveSettings(u,{presetId=''}={}){if(presetId!=='')id(presetId);await write(u,'settings.json',{presetId});return {presetId};}
- return {saveSettings,books,entries,approveIdentity,translationPreview,translationRun,preview,run,cancel,list,edit,translate,importRecords,remap,catalog,dispose(){alive=false;cancelAll();off.forEach(f=>f());}};
+ return {saveSettings,messageCount,books,entries,approveIdentity,translationPreview,translationRun,preview,run,cancel,list,edit,translate,importRecords,remap,catalog,dispose(){alive=false;cancelAll();off.forEach(f=>f());}};
 }

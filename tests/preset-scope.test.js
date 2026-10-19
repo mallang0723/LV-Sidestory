@@ -10,7 +10,7 @@ function setup(preset){
  f.api.assemble=async(input,user)=>{assembled.push({input,user});return {messages:[],breakdown:input.blocks.map(b=>({type:'block',blockId:b.id,name:b.name,content:b.content.replace(/\{\{[^}]*\}\}/g,CANARY)}))};};
  return {f,s,assembled};
 }
-const base={mode:'story',connectionId:'conn',request:'x',includeCharacter:false,includePersona:false,messageIds:[]};
+const base={mode:'story',connectionId:'conn',request:'x',includeCharacter:false,includePersona:false};
 const block=(id,content,extra={})=>({id,name:id,content,role:'system',enabled:true,marker:null,...extra});
 const all=p=>JSON.stringify(p.messages);
 

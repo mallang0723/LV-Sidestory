@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createService} from '../src/service.js';
 import {fake} from './fake.js';
 import {validateImport} from '../src/core.js';
-const input={mode:'story',request:'synthetic',messageIds:['m1'],connectionId:'conn',budget:8000};
+const input={mode:'story',request:'synthetic',dialogue:{mode:'recent',count:1},connectionId:'conn',budget:8000};
 test('host relative list retains saved archive and index rows',async()=>{
  const f=fake();
  const s=createService(f.api),p=await s.preview('u',input),r=await s.run('u',{previewId:p.id,requestId:'storage'});
