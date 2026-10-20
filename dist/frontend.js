@@ -148,6 +148,7 @@ var text = (v, max = 1e5) => {
     throw Error("invalid text/size");
   return v;
 };
+var TEXT_MODES = new Set(["analysis", "story", "speak", "write", "au"]);
 var DIALOGUE_MAX = 500;
 var whole = (v) => {
   const s = typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : "";
@@ -201,6 +202,145 @@ function segments(content, mode) {
   }
   add(end, content.length);
   return out;
+}
+function validateIdentity(value) {
+  const o = typeof value === "string" ? JSON.parse(unfence(value)) : structuredClone(value);
+  const check = (v, keys) => {
+    if (!v || typeof v !== "object" || Array.isArray(v))
+      throw Error("invalid identity");
+    for (const k of Object.keys(v))
+      if (!keys.includes(k))
+        throw Error("unsupported identity field: " + k);
+  };
+  check(o, ["schema", "subjects", "relationship", "counterpart"]);
+  if (o.schema !== "sidestory-identity-v1" || !Array.isArray(o.subjects) || !o.subjects.length || o.subjects.length > 2)
+    throw Error("identity schema");
+  const fields = ["name", "gender", "age", "relative_age", "alignment", "background_context", "hair", "eyes", "height", "build", "design", "temperament", "speech", "interpersonal", "sheet_layout"], seen = new Set;
+  for (const row of o.subjects) {
+    check(row, ["kind", ...fields]);
+    if (!["character", "user"].includes(row.kind) || seen.has(row.kind) || !row.name)
+      throw Error("identity subject");
+    seen.add(row.kind);
+    for (const k of fields) {
+      if (["temperament", "interpersonal", "sheet_layout"].includes(k)) {
+        row[k] ??= [];
+        if (!Array.isArray(row[k]) || row[k].length > 40)
+          throw Error("identity array");
+        row[k].forEach((x) => text(x, 600));
+      } else
+        row[k] = text(row[k] ?? "", k === "background_context" ? 180 : 2000);
+    }
+  }
+  o.relationship = text(o.relationship ?? "", 2000);
+  if (o.counterpart != null) {
+    check(o.counterpart, ["name", "gender", "age"]);
+    for (const k of ["name", "gender", "age"])
+      o.counterpart[k] = text(o.counterpart[k] ?? "", 150);
+    if (o.subjects.length === 2)
+      throw Error("identity counterpart");
+  } else
+    o.counterpart = null;
+  return o;
+}
+var FENCE = /^\s*```[\w-]*[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```\s*$/;
+function unfence(value) {
+  const m = typeof value === "string" && FENCE.exec(value);
+  return m ? m[1] : value;
+}
+var SUBJECT_KIND = { character: "캐릭터", user: "페르소나" };
+var IDENTITY_FIELDS = [["name", "이름"], ["gender", "성별"], ["age", "나이"], ["relative_age", "상대와의 나이 차"], ["alignment", "성향"], ["background_context", "배경"], ["hair", "머리카락"], ["eyes", "눈"], ["height", "키"], ["build", "체격"], ["design", "전체 인상"], ["temperament", "기질"], ["speech", "말투"], ["interpersonal", "대인 반응"], ["sheet_layout", "시트 구성"]];
+var filled = (v) => typeof v === "string" ? v.trim() : "";
+function identityText(plan) {
+  const out = [];
+  const subjects = Array.isArray(plan?.subjects) ? plan.subjects : [];
+  for (const row of subjects) {
+    if (out.length)
+      out.push("");
+    out.push(`■ ${SUBJECT_KIND[row?.kind] || "인물"}${filled(row?.name) ? " · " + filled(row.name) : ""}`);
+    for (const [key, label] of IDENTITY_FIELDS) {
+      const v = row?.[key];
+      if (Array.isArray(v)) {
+        const items = v.map(filled).filter(Boolean);
+        if (items.length)
+          out.push(`${label}:`, ...items.map((x) => `  • ${x}`));
+      } else if (filled(v))
+        out.push(`${label}: ${filled(v)}`);
+    }
+  }
+  if (filled(plan?.relationship))
+    out.push("", "■ 관계", filled(plan.relationship));
+  const c = plan?.counterpart;
+  if (c && typeof c === "object") {
+    const rows = [["name", "이름"], ["gender", "성별"], ["age", "나이"]].filter(([k]) => filled(c[k])).map(([k, l]) => `${l}: ${filled(c[k])}`);
+    if (rows.length)
+      out.push("", "■ 상대", ...rows);
+  }
+  return out.join(`
+`);
+}
+var TEXT_KEYS = ["content", "story", "text", "body", "output", "result", "answer", "response", "message", "markdown", "본문", "내용"];
+var TITLE_KEYS = ["title", "제목"];
+function outline(v, depth = 0) {
+  const pad = "  ".repeat(depth);
+  if (Array.isArray(v))
+    return v.map((x) => x && typeof x === "object" ? `${pad}•
+${outline(x, depth + 1)}` : `${pad}• ${String(x ?? "")}`).join(`
+`);
+  if (v && typeof v === "object")
+    return Object.entries(v).filter(([, x]) => x != null && x !== "").map(([k, x]) => x && typeof x === "object" ? `${pad}${k}:
+${outline(x, depth + 1)}` : `${pad}${k}: ${String(x)}`).join(`
+`);
+  return pad + String(v ?? "");
+}
+function jsonReplyText(content) {
+  if (typeof content !== "string")
+    return null;
+  const raw = unfence(content).trim();
+  if (!/^[[{]/.test(raw))
+    return null;
+  let v;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== "object")
+    return null;
+  if (!Array.isArray(v) && v.schema === "sidestory-identity-v1" && Array.isArray(v.subjects))
+    return identityText(v);
+  if (!Array.isArray(v)) {
+    const key = TEXT_KEYS.find((k) => typeof v[k] === "string" && v[k].trim());
+    if (key) {
+      const title = TITLE_KEYS.map((k) => v[k]).find((x) => typeof x === "string" && x.trim());
+      return (title ? title.trim() + `
+
+` : "") + v[key].trim();
+    }
+  }
+  if (Array.isArray(v) && v.length && v.every((x) => typeof x === "string"))
+    return v.join(`
+
+`);
+  return outline(v);
+}
+function displayText(record) {
+  const content = typeof record?.content === "string" ? record.content : "";
+  try {
+    if (record?.mode === "html")
+      return content;
+    if (record?.mode === "identity") {
+      const plan = record.facetPlan && typeof record.facetPlan === "object" ? record.facetPlan : validateIdentity(content);
+      const doc = identityText(plan);
+      return doc || content;
+    }
+    const fromJSON = jsonReplyText(content);
+    if (fromJSON != null)
+      return fromJSON;
+    const m = FENCE.exec(content);
+    return m ? m[1] : content;
+  } catch {
+    return content;
+  }
 }
 
 // src/workspace-style.js
@@ -537,9 +677,11 @@ function createWorkspace(root) {
       const b = node("button", "", archive, "ss-archive-card");
       const modeName = { analysis: "분석", story: "스토리", speak: "내면 말하기", write: "내면 쓰기", identity: "핵심정보", au: "AU", html: "HTML" }[r.mode] || r.mode;
       node("small", `${r.parentId ? "파생본 · " : ""}${modeName} · ${new Date(r.createdAt || Date.now()).toLocaleDateString("ko-KR")}`, b);
-      node("strong", r.title || r.content.slice(0, 45) || "제목 없는 결과", b);
-      node("span", r.content.slice(0, 120), b);
+      const view = displayText(r);
+      node("strong", r.title || view.slice(0, 45) || "제목 없는 결과", b);
+      node("span", view.slice(0, 120), b);
       archiveText.set(b, `${r.title || ""}
+${view}
 ${r.content}`.toLocaleLowerCase());
       b.onclick = open;
       return b;
@@ -762,8 +904,9 @@ ${c.error ? "⚠ " + c.error : `넣을 원문: ${c.label} · 예산이 모자라
     translationPreview = null;
     record = r;
     identityView.textContent = r.mode === "identity" ? JSON.stringify({ approved: !!r.identityApproved, facetPlan: r.facetPlan }, null, 2) : "";
-    output.value = r.content;
-    ui.showResult(r, r.content);
+    const view = displayText(r);
+    output.value = r.mode === "identity" ? r.content : view;
+    ui.showResult(r, view);
     frame?.destroy();
     frame = null;
     htmlRoot.replaceChildren();
@@ -941,12 +1084,12 @@ ${c.error ? "⚠ " + c.error : `넣을 원문: ${c.label} · 예산이 모자라
   action("새 채팅용 텍스트 내보내기", async () => {
     if (!record)
       throw Error("결과 선택");
-    download("side-story-chat.txt", record.content, "text/plain");
+    download("side-story-chat.txt", displayText(record), "text/plain");
   });
   action("AU 카드 초안 내보내기", async () => {
     if (record?.mode !== "au")
       throw Error("AU 결과 선택");
-    download("side-story-au.json", JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: { name: "AU 초안", description: record.content, personality: "", scenario: "", first_mes: "", mes_example: "", creator_notes: "Side Story 비공식 AU 초안", system_prompt: "", post_history_instructions: "", alternate_greetings: [], tags: [], creator: "", character_version: "", extensions: {} } }, null, 2));
+    download("side-story-au.json", JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: { name: "AU 초안", description: displayText(record), personality: "", scenario: "", first_mes: "", mes_example: "", creator_notes: "Side Story 비공식 AU 초안", system_prompt: "", post_history_instructions: "", alternate_greetings: [], tags: [], creator: "", character_version: "", extensions: {} } }, null, 2));
   });
   action("정적 HTML 내보내기", async () => {
     if (!record)
@@ -1002,9 +1145,10 @@ ${c.error ? "⚠ " + c.error : `넣을 원문: ${c.label} · 예산이 모자라
     if (!record)
       throw Error("결과 선택");
     const e = epoch;
-    const value = await replaceDisplay(record.content, pattern.value, replacement.value);
+    const value = await replaceDisplay(displayText(record), pattern.value, replacement.value);
     if (e === epoch && !disposed) {
-      output.value = value;
+      if (record.mode !== "identity")
+        output.value = value;
       ui.showResult(record, value);
     }
   });

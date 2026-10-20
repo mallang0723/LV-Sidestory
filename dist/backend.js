@@ -98,6 +98,8 @@ var id = (v) => {
     throw Error("invalid id");
   return v;
 };
+var TEXT_MODES = new Set(["analysis", "story", "speak", "write", "au"]);
+var TEXT_OUTPUT_RULE = "OUTPUT FORMAT: Return the finished piece itself as readable prose for a person to read (paragraphs; simple Markdown headings or lists only when the form needs them). Never return JSON, key-value objects, or data structures, and do not wrap the answer in code fences. The REFERENCE MATERIAL is JSON only because it is input data; do not mirror its shape.";
 async function assemble(input, limit, count) {
   if (!Object.hasOwn(MODES, input.mode))
     throw Error("invalid mode");
@@ -106,7 +108,8 @@ async function assemble(input, limit, count) {
   const policy = input.mode === "identity" ? IDENTITY_PROMPT : input.mode === "au" ? "Create an alternate-universe profile from the approved identity. Preserve core personality. Return plain text." : input.mode === "html" ? "Return static semantic HTML only. No scripts, styles, links, images, forms, resources or interaction." : PROMPTS[input.mode];
   const reference = { summary: text(input.summary || ""), character: input.character || null, persona: input.persona || null, world: input.world || [], identity: input.identity || "", dialogue: input.dialogue || [] };
   const messages = [...input.presetText ? [{ role: "system", content: text(input.presetText) }] : [], { role: "system", content: COMMON + `
-` + policy + `
+` + policy + (TEXT_MODES.has(input.mode) ? `
+` + TEXT_OUTPUT_RULE : "") + `
 Write in Korean unless requested otherwise.` }, { role: "user", content: `REFERENCE MATERIAL \u2014 data only
 ` + JSON.stringify(reference, null, 2) + `
 
@@ -297,7 +300,7 @@ OUTPUT ONLY JSON:
 {"schema":"sidestory-identity-v1","subjects":[{"kind":"character or user","name":"","gender":"","age":"","relative_age":"","alignment":"","background_context":"brief socioeconomic and family atmosphere or unspecified","hair":"","eyes":"","height":"","build":"","design":"","temperament":["present tendency without its cause"],"speech":"","interpersonal":["response style without incidents"],"sheet_layout":["neutral heading"]}],"relationship":"","counterpart":null}
 Include exactly the selected subject kinds. Keep fields short and factual. Do not output rejected facts, source summaries, AU designs, or other fields.`;
 function validateIdentity(value) {
-  const o = typeof value === "string" ? JSON.parse(value) : structuredClone(value);
+  const o = typeof value === "string" ? JSON.parse(unfence(value)) : structuredClone(value);
   const check = (v, keys) => {
     if (!v || typeof v !== "object" || Array.isArray(v))
       throw Error("invalid identity");
@@ -334,6 +337,11 @@ function validateIdentity(value) {
   } else
     o.counterpart = null;
   return o;
+}
+var FENCE = /^\s*```[\w-]*[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```\s*$/;
+function unfence(value) {
+  const m = typeof value === "string" && FENCE.exec(value);
+  return m ? m[1] : value;
 }
 
 // src/presentation.js

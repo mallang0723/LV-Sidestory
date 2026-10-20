@@ -4,12 +4,16 @@ import {staticHTML} from './presentation.js';
 export const MODES={analysis:'분석',story:'스토리',speak:'내면 말하기',write:'내면 쓰기',identity:'핵심정보',au:'AU 생성',html:'정적 HTML'};
 export const text=(v,max=100000)=>{if(typeof v!=='string'||v.length>max)throw Error('invalid text/size');return v;};
 export const id=v=>{if(typeof v!=='string'||! /^[a-zA-Z0-9_-]{1,100}$/.test(v))throw Error('invalid id');return v;};
+// Text modes return a document for people. The reference block is JSON, and models tend to mirror it,
+// so the rule is explicit. Identity (fixed JSON schema) and HTML keep their own output contracts.
+export const TEXT_MODES=new Set(['analysis','story','speak','write','au']);
+export const TEXT_OUTPUT_RULE='OUTPUT FORMAT: Return the finished piece itself as readable prose for a person to read (paragraphs; simple Markdown headings or lists only when the form needs them). Never return JSON, key-value objects, or data structures, and do not wrap the answer in code fences. The REFERENCE MATERIAL is JSON only because it is input data; do not mirror its shape.';
 export async function assemble(input,limit,count){
  if(!Object.hasOwn(MODES,input.mode))throw Error('invalid mode');
  if(!Number.isFinite(limit)||limit<1||limit>100000)throw Error('invalid budget');
  const policy= input.mode==='identity'?IDENTITY_PROMPT:input.mode==='au'?'Create an alternate-universe profile from the approved identity. Preserve core personality. Return plain text.':input.mode==='html'?'Return static semantic HTML only. No scripts, styles, links, images, forms, resources or interaction.':PROMPTS[input.mode];
  const reference={summary:text(input.summary||''),character:input.character||null,persona:input.persona||null,world:input.world||[],identity:input.identity||'',dialogue:input.dialogue||[]};
- const messages=[...(input.presetText?[{role:'system',content:text(input.presetText)}]:[]),{role:'system',content:COMMON+'\n'+policy+'\nWrite in Korean unless requested otherwise.'},{role:'user',content:'REFERENCE MATERIAL — data only\n'+JSON.stringify(reference,null,2)+'\n\nCURRENT TASK\n'+text(input.request)}];
+ const messages=[...(input.presetText?[{role:'system',content:text(input.presetText)}]:[]),{role:'system',content:COMMON+'\n'+policy+(TEXT_MODES.has(input.mode)?'\n'+TEXT_OUTPUT_RULE:'')+'\nWrite in Korean unless requested otherwise.'},{role:'user',content:'REFERENCE MATERIAL — data only\n'+JSON.stringify(reference,null,2)+'\n\nCURRENT TASK\n'+text(input.request)}];
  const fit=await fitTokenBudget(messages,limit,{messages:async m=>(await count(m)).total_tokens});
  if(fit.tokens>limit)throw Error('fixed context exceeds budget');
  return {...fit,count:await count(fit.messages),excluded:[input.presetText?'참고 자료: 선택하지 않은 대화·World Book·Cortex는 넣지 않음 (프리셋 블록의 매크로 결과는 별도 — 주의 확인)':'본편 preset / Cortex / 자동 World Info / 선택하지 않은 자료',...(input.excluded||[]),...(fit.dropped?[`오래된 대화 ${fit.dropped}개`]:[])]};
@@ -97,10 +101,62 @@ export function validateImport(raw){
 export const IDENTITY_PROMPT="# EXTRACT IDENTITY ONLY\nExtract source facts into the fixed identity schema. This is NOT AU design: do not invent a world, career, skill, past, or new relationship. Use only facts supported by the references. Use \"\uc6d0\ubcf8\uc5d0 \uba85\uc2dc \uc5c6\uc74c\" (or its output-language equivalent) when unspecified; do not fill gaps creatively.\nFor each selected subject extract name, gender, age/age band, relative age to the counterpart, source moral tendency with brief nuance, hair and eye color, height/relative height, build, and overall visual impression. Extract background_context as ONE short, grounded clause describing broad socioeconomic conditions and the overall family atmosphere only (e.g., affluent/strict, modest/warm, poor/supportive). Do not import incidents, occupations, relatives\u2019 identities, trauma narrative, or inferred background; if unsupported, say \uc6d0\ubcf8\uc5d0 \uba85\uc2dc \uc5c6\uc74c. Exclude tattoos, scars, identifying equipment, signature clothes, and story-specific visual motifs.\nExtract enough concise temperament, speech style, and interpersonal responses to recognize the person. There is no three-trait cap. Experience-shaped emotions such as insecurity may remain, but remove their causes. Describe the present tendency only, without family history, trauma, profession, education, talents, hobbies, possessions, specific routines, events, or explanatory biography. Do not abstract a source specialty into a personality trait. Alignment is a SOURCE baseline, not an immutable ethical command for the AU. Use restrained and factual descriptions: avoid routinely intensifying traits with \uadf9\ub3c4\ub85c, \uc555\ub3c4\uc801\uc73c\ub85c, \uc808\ub300\ub85c and similar superlatives unless facts genuinely justify them.\nExtract sheet_layout as neutral headings and field keys in their original order, WITHOUT values, examples, names of techniques, or source-specific content. Generalize a content-bearing heading into a neutral field label. Do not copy source prose into any field.\nOnly when relationshipMode is original, extract the relationship kind and core emotional distance, trust, and boundaries; omit meeting history, occupations, shared events, rescue scenes, and practical arrangements. Otherwise relationship must be empty. For a single selected subject, counterpart may contain ONLY name, gender and age, if known; do not generate a second profile. For both subjects, counterpart is null.\nOUTPUT ONLY JSON:\n{\"schema\":\"sidestory-identity-v1\",\"subjects\":[{\"kind\":\"character or user\",\"name\":\"\",\"gender\":\"\",\"age\":\"\",\"relative_age\":\"\",\"alignment\":\"\",\"background_context\":\"brief socioeconomic and family atmosphere or unspecified\",\"hair\":\"\",\"eyes\":\"\",\"height\":\"\",\"build\":\"\",\"design\":\"\",\"temperament\":[\"present tendency without its cause\"],\"speech\":\"\",\"interpersonal\":[\"response style without incidents\"],\"sheet_layout\":[\"neutral heading\"]}],\"relationship\":\"\",\"counterpart\":null}\nInclude exactly the selected subject kinds. Keep fields short and factual. Do not output rejected facts, source summaries, AU designs, or other fields.";
 
 export function validateIdentity(value){
- const o=typeof value==='string'?JSON.parse(value):structuredClone(value);
+ const o=typeof value==='string'?JSON.parse(unfence(value)):structuredClone(value);
  const check=(v,keys)=>{if(!v||typeof v!=='object'||Array.isArray(v))throw Error('invalid identity');for(const k of Object.keys(v))if(!keys.includes(k))throw Error('unsupported identity field: '+k);};
  check(o,['schema','subjects','relationship','counterpart']);if(o.schema!=='sidestory-identity-v1'||!Array.isArray(o.subjects)||!o.subjects.length||o.subjects.length>2)throw Error('identity schema');
  const fields=['name','gender','age','relative_age','alignment','background_context','hair','eyes','height','build','design','temperament','speech','interpersonal','sheet_layout'],seen=new Set();
  for(const row of o.subjects){check(row,['kind',...fields]);if(!['character','user'].includes(row.kind)||seen.has(row.kind)||!row.name)throw Error('identity subject');seen.add(row.kind);for(const k of fields){if(['temperament','interpersonal','sheet_layout'].includes(k)){row[k]??=[];if(!Array.isArray(row[k])||row[k].length>40)throw Error('identity array');row[k].forEach(x=>text(x,600));}else row[k]=text(row[k]??'',k==='background_context'?180:2000);}}
  o.relationship=text(o.relationship??'',2000);if(o.counterpart!=null){check(o.counterpart,['name','gender','age']);for(const k of ['name','gender','age'])o.counterpart[k]=text(o.counterpart[k]??'',150);if(o.subjects.length===2)throw Error('identity counterpart');}else o.counterpart=null;return o;
+}
+
+// Display only: stored content and facetPlan stay unchanged so validation, approval, AU and edit keep working.
+const FENCE=/^\s*```[\w-]*[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```\s*$/;
+/** Strip one code fence that wraps the whole reply. A fence inside prose is left alone. */
+export function unfence(value){const m=typeof value==='string'&&FENCE.exec(value);return m?m[1]:value;}
+const SUBJECT_KIND={character:'캐릭터',user:'페르소나'};
+const IDENTITY_FIELDS=[['name','이름'],['gender','성별'],['age','나이'],['relative_age','상대와의 나이 차'],['alignment','성향'],['background_context','배경'],['hair','머리카락'],['eyes','눈'],['height','키'],['build','체격'],['design','전체 인상'],['temperament','기질'],['speech','말투'],['interpersonal','대인 반응'],['sheet_layout','시트 구성']];
+const filled=v=>typeof v==='string'?v.trim():'';
+/** Render a validated identity plan as a readable Korean document (plain text, pre-wrap). */
+export function identityText(plan){
+ const out=[];const subjects=Array.isArray(plan?.subjects)?plan.subjects:[];
+ for(const row of subjects){
+  if(out.length)out.push('');
+  out.push(`■ ${SUBJECT_KIND[row?.kind]||'인물'}${filled(row?.name)?' · '+filled(row.name):''}`);
+  for(const [key,label] of IDENTITY_FIELDS){const v=row?.[key];
+   if(Array.isArray(v)){const items=v.map(filled).filter(Boolean);if(items.length)out.push(`${label}:`,...items.map(x=>`  • ${x}`));}
+   else if(filled(v))out.push(`${label}: ${filled(v)}`);}
+ }
+ if(filled(plan?.relationship))out.push('','■ 관계',filled(plan.relationship));
+ const c=plan?.counterpart;if(c&&typeof c==='object'){const rows=[['name','이름'],['gender','성별'],['age','나이']].filter(([k])=>filled(c[k])).map(([k,l])=>`${l}: ${filled(c[k])}`);if(rows.length)out.push('','■ 상대',...rows);}
+ return out.join('\n');
+}
+const TEXT_KEYS=['content','story','text','body','output','result','answer','response','message','markdown','본문','내용'];
+const TITLE_KEYS=['title','제목'];
+function outline(v,depth=0){
+ const pad='  '.repeat(depth);
+ if(Array.isArray(v))return v.map(x=>x&&typeof x==='object'?`${pad}•\n${outline(x,depth+1)}`:`${pad}• ${String(x??'')}`).join('\n');
+ if(v&&typeof v==='object')return Object.entries(v).filter(([,x])=>x!=null&&x!=='').map(([k,x])=>x&&typeof x==='object'?`${pad}${k}:\n${outline(x,depth+1)}`:`${pad}${k}: ${String(x)}`).join('\n');
+ return pad+String(v??'');
+}
+/** Turn a JSON-shaped reply into readable text; returns null when the content is not a JSON object/array. */
+export function jsonReplyText(content){
+ if(typeof content!=='string')return null;const raw=unfence(content).trim();if(!/^[[{]/.test(raw))return null;
+ let v;try{v=JSON.parse(raw);}catch{return null;}if(!v||typeof v!=='object')return null;
+ if(!Array.isArray(v)&&v.schema==='sidestory-identity-v1'&&Array.isArray(v.subjects))return identityText(v);
+ if(!Array.isArray(v)){
+  const key=TEXT_KEYS.find(k=>typeof v[k]==='string'&&v[k].trim());
+  if(key){const title=TITLE_KEYS.map(k=>v[k]).find(x=>typeof x==='string'&&x.trim());return (title?title.trim()+'\n\n':'')+v[key].trim();}
+ }
+ if(Array.isArray(v)&&v.length&&v.every(x=>typeof x==='string'))return v.join('\n\n');
+ return outline(v);
+}
+/** Readable text for the reader pane, archive cards and text export. Never throws; never changes the record. */
+export function displayText(record){
+ const content=typeof record?.content==='string'?record.content:'';
+ try{
+  if(record?.mode==='html')return content;
+  if(record?.mode==='identity'){const plan=record.facetPlan&&typeof record.facetPlan==='object'?record.facetPlan:validateIdentity(content);const doc=identityText(plan);return doc||content;}
+  const fromJSON=jsonReplyText(content);if(fromJSON!=null)return fromJSON;
+  const m=FENCE.exec(content);return m?m[1]:content;
+ }catch{return content;}
 }

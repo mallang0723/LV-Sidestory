@@ -1,6 +1,7 @@
 // Layout adapted from ST-Sidestory 0.9.8: work folders, composer/reader,
 // reference controls, archive and settings. Uses Lumiverse theme variables.
 import {workspaceStyles} from './workspace-style.js';
+import {displayText} from './core.js';
 
 export function createWorkspace(root){
  const node=(tag,text,parent,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;parent.append(e);return e;};
@@ -103,7 +104,7 @@ export function createWorkspace(root){
   showResult(r,content){app.dataset.hasResult='true';app.dataset.mode=r.mode;delete app.dataset.previewActive;identities([r]);empty.hidden=true;preview.parentElement.open=false;prose.hidden=r.mode==='html';prose.textContent=content;resultTitle.textContent=r.title||({analysis:'인물 분석',story:'새로운 이야기',speak:'내면 말하기',write:'내면 쓰기',identity:'인물 핵심정보',au:'AU 초안',html:'HTML 결과'}[r.mode]||'결과');resultMeta.textContent=`${new Date(r.createdAt||Date.now()).toLocaleDateString('ko-KR')} · revision ${r.revision}${r.parentId?' · 파생본':''}`;setPage('create');setPane('result');},
   clearResult(){delete app.dataset.hasResult;delete app.dataset.hasPreview;delete app.dataset.previewActive;empty.hidden=false;prose.hidden=true;prose.textContent='';resultTitle.textContent='아직 펼치지 않은 이야기';resultMeta.textContent='';chatTitle.textContent='채팅이 바뀌었습니다. 자료를 다시 불러오세요.';},
   catalog(c){chatTitle.textContent=`${c.chat?.name||'현재 채팅'} · 루미버스 요약을 기본으로 넣습니다.`;},
-  archiveCard(r,open){archiveEmpty.hidden=true;const b=node('button','',archive,'ss-archive-card');const modeName={analysis:'분석',story:'스토리',speak:'내면 말하기',write:'내면 쓰기',identity:'핵심정보',au:'AU',html:'HTML'}[r.mode]||r.mode;node('small',`${r.parentId?'파생본 · ':''}${modeName} · ${new Date(r.createdAt||Date.now()).toLocaleDateString('ko-KR')}`,b);node('strong',r.title||r.content.slice(0,45)||'제목 없는 결과',b);node('span',r.content.slice(0,120),b);archiveText.set(b,`${r.title||''}\n${r.content}`.toLocaleLowerCase());b.onclick=open;return b;},
+  archiveCard(r,open){archiveEmpty.hidden=true;const b=node('button','',archive,'ss-archive-card');const modeName={analysis:'분석',story:'스토리',speak:'내면 말하기',write:'내면 쓰기',identity:'핵심정보',au:'AU',html:'HTML'}[r.mode]||r.mode;node('small',`${r.parentId?'파생본 · ':''}${modeName} · ${new Date(r.createdAt||Date.now()).toLocaleDateString('ko-KR')}`,b);const view=displayText(r);node('strong',r.title||view.slice(0,45)||'제목 없는 결과',b);node('span',view.slice(0,120),b);archiveText.set(b,`${r.title||''}\n${view}\n${r.content}`.toLocaleLowerCase());b.onclick=open;return b;},
   resetArchive(){archive.replaceChildren();archiveEmpty.hidden=false;search.value='';},
  };
 }

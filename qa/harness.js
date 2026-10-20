@@ -36,6 +36,14 @@ try{
  for(const [key,approved,needsRemap] of [['approved',true,false],['unapproved',false,false],['foreign',true,true]])f.data.set('fixture-user:records/'+key+'.json',{id:key,mode:'identity',content:'synthetic identity',revision:1,identityApproved:approved,needsRemap});
  await click('보관함 / 인덱스 복구');button('다면').click();button('AU 생성').click();
  const identitySelect=root.querySelector('[aria-label="승인한 핵심정보"]');assert(identitySelect.tagName==='SELECT'&&[...identitySelect.options].map(x=>x.value).join(',')===',approved','AU picker contains only approved non-imported identity');
+ const identityJSON=JSON.stringify({schema:'sidestory-identity-v1',subjects:[{kind:'character',name:'하네스 인물',gender:'여성',temperament:['신중함']}],relationship:'',counterpart:null});
+ f.data.set('fixture-user:records/readable.json',{id:'readable',mode:'identity',content:identityJSON,revision:1,identityApproved:false,needsRemap:false,createdAt:1});
+ f.data.set('fixture-user:records/fenced.json',{id:'fenced',mode:'story',content:'```json\n{"content":"펜스 안의 이야기 본문"}\n```',revision:1,createdAt:2});
+ await click('보관함 / 인덱스 복구');const card=t=>[...root.querySelectorAll('.ss-archive-card')].find(b=>b.textContent.includes(t));
+ assert(card('하네스 인물')&&!card('하네스 인물').textContent.includes('"schema"'),'identity archive card is readable');assert(card('펜스 안의 이야기 본문')&&!card('펜스 안의 이야기 본문').textContent.includes('```'),'fenced JSON archive card is readable');
+ card('하네스 인물').click();const prose=q('.ss-prose').textContent;assert(prose.includes('이름: 하네스 인물')&&prose.includes('• 신중함')&&!prose.includes('{'),'identity reader shows a document: '+prose);
+ assert(q('[aria-label="결과 / 편집 초안"]').value===identityJSON,'identity edit draft keeps JSON for validation');
+ card('펜스 안의 이야기 본문').click();assert(q('.ss-prose').textContent==='펜스 안의 이야기 본문'&&q('[aria-label="결과 / 편집 초안"]').value==='펜스 안의 이야기 본문','JSON reply shown and edited as text');
  const cleaned=staticHTML('<h1>safe</h1><script>parent.pwned=1</script><img src="https://invalid.test">');assert(!/<script|<img/.test(cleaned),'sanitization');
  assert(await replaceDisplay('hello','hello','안녕')==='안녕','worker replacement');let timed=false;try{await replaceDisplay('a'.repeat(30000)+'!','(a+)+$','x',30);}catch(e){timed=e.message==='replacement timeout';}assert(timed,'worker timeout');
  const png=await excerptPNG('합성 발췌 테스트');assert(png.type==='image/png'&&png.size>0,'PNG');
@@ -43,5 +51,5 @@ try{
  window.Worker=class extends NativeWorker{constructor(...args){super(...args);workerStarted++;}terminate(){workerTerminated++;return super.terminate();}};
  URL.createObjectURL=blob=>{const url=createURL.call(URL,blob);urls.add(url);return url;};URL.revokeObjectURL=url=>{urls.delete(url);return revokeURL.call(URL,url);};
  root.querySelector('[aria-label="표시 치환 정규식"]').value='edited';button('표시에만 치환').click();assert(workerStarted===1,'bundled frontend worker started');stopFrontend();assert(workerTerminated===1&&urls.size===0,'pending bundled worker terminated and URL revoked');window.Worker=NativeWorker;URL.createObjectURL=createURL;URL.revokeObjectURL=revokeURL;stopBackend();assert(!root.children.length,'cleanup');
- document.querySelector('#qa-result').textContent='PASS: fake-host summary-first defaults, no message list, numeric raw dialogue (count on demand, 44px, numeric keypad); prompt/generation/edit/storage; HTML escape policy; worker timeout; PNG; cleanup. Real host NOT tested.';
+ document.querySelector('#qa-result').textContent='PASS: fake-host summary-first defaults, readable identity/JSON-reply display, no message list, numeric raw dialogue (count on demand, 44px, numeric keypad); prompt/generation/edit/storage; HTML escape policy; worker timeout; PNG; cleanup. Real host NOT tested.';
 }catch(e){document.querySelector('#qa-result').textContent='FAIL: '+e.stack;stopFrontend();stopBackend();}
