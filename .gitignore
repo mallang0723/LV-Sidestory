@@ -5,6 +5,7 @@ node_modules/
 qa/*
 !qa/harness.html
 !qa/harness.js
+!qa/host-themes.json
 !qa/screens/
 qa/screens/*
 !qa/screens/v020/

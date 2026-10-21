@@ -11,7 +11,7 @@ const SECONDARY='small,.hint,.facet-source-heading>span,.label,.section-label,.p
 const SECONDARY_WORDS=SECONDARY_SELECTOR.source;
 // Things allowed to stay small, with the reason (reported, not hidden).
 const EXEMPT=[{selector:'.sr-only',reason:'screen-reader only'},{selector:'.side-toast',reason:'transient toast'},{selector:'.swatch',reason:'theme colour circles (24px); seven 44px circles do not fit one row on a 360px phone, and the row itself is 44px'},{selector:'.speak-news-dot',reason:'card position dots; the 44px previous/next arrows and swipe do the same'}];
-const profile=await mkdtemp(path.join(process.cwd(),'qa/browser-profile-'));let child,ws,err='',timer,server;const errors=[],report=[],failures=[];
+const profile=await mkdtemp(path.join(process.cwd(),'qa/browser-profile-'));let child,ws,err='',timer,server;const errors=[],report=[],failures=[],themeReport=[];
 const types={'.js':'text/javascript','.mjs':'text/javascript','.html':'text/html','.css':'text/css','.json':'application/json'};
 try{
  server=createServer(async(req,res)=>{try{const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(pathname==='/favicon.ico'){res.statusCode=204;res.end();return;}const file=path.resolve('.'+pathname);if(!file.startsWith(process.cwd()+path.sep))throw Error('path');res.setHeader('Content-Type',types[path.extname(file)]||'text/plain');res.end(await readFile(file));}catch{res.statusCode=404;res.end('not found');}});
@@ -67,21 +67,52 @@ try{
   const step=async(name,fn)=>{try{await fn();}catch(e){const notice=await evaluate(`${S}?.getElementById('notice')?.textContent||''`).catch(()=>'');failures.push(`${tag} ${name}: ${e.message}${notice?' · 화면 알림: '+notice:''}`);}};
   await step('archive',async()=>{await measure('archive');});
   await step('host theme',async()=>{
-   const read=()=>evaluate(`(()=>{const ui=${S}.querySelector('.app'),w=${S}.querySelector('.window');const probe=n=>{const i=document.createElement('i');i.style.color=getComputedStyle(document.documentElement).getPropertyValue(n);document.body.append(i);const c=getComputedStyle(i).color;i.remove();return c;};return {theme:ui.dataset.theme,host:ui.dataset.hostTheme,bg:getComputedStyle(w).backgroundColor,want:probe('--lumiverse-bg-opaque'),ink:getComputedStyle(${S}.querySelector('.bar h1, .bar-title, h1')).color,wantInk:probe('--lumiverse-text')};})()`);
-   const dark=await read();if(dark.theme!=='dark'||dark.host!=='match'||dark.bg!==dark.want||dark.ink!==dark.wantInk)throw Error('dark host theme not applied '+JSON.stringify(dark));
-   await evaluate(`document.documentElement.classList.add('lv-light')`);await sleep(500);
-   const light=await read();if(light.theme!=='light'||light.host!=='match'||light.bg!==light.want||light.ink!==light.wantInk)throw Error('light host theme not followed '+JSON.stringify(light));
-   await measure('theme-light');await evaluate(`document.documentElement.classList.remove('lv-light')`);await sleep(500);
+   // For every host theme set: Side Story's text must stay readable (>=4.5:1) on what is actually behind it.
+   await click('[data-pane="compose"]');await until(`!!${S}.getElementById('generate')`);
+   for(const name of await evaluate('qa.themes')){
+    await evaluate(`qa.setTheme(${JSON.stringify(name)})`);await sleep(450);
+    const r=await evaluate(`(()=>{const sh=${S};const parse=c=>{const m=c.match(/[\\d.]+/g);return m?{r:+m[0],g:+m[1],b:+m[2],a:m[3]===undefined?1:+m[3]}:null;};
+     const lum=c=>{const f=v=>{v/=255;return v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4;};return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b);};
+     const over=(c,b)=>({r:c.r*c.a+b.r*(1-c.a),g:c.g*c.a+b.g*(1-c.a),b:c.b*c.a+b.b*(1-c.a),a:1});
+     const backOf=e=>{const layers=[];for(let n=e;n;n=n.parentElement||n.getRootNode()?.host){const c=parse(getComputedStyle(n).backgroundColor);if(c&&c.a>0)layers.push(c);if(c&&c.a>=1)break;}let b={r:255,g:255,b:255,a:1};for(const c of layers.reverse())b=over(c,b);return b;};
+     const ratio=e=>{const b=backOf(e),c=over(parse(getComputedStyle(e).color),b),x=lum(c),y=lum(b);return Math.round((Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)*100)/100;};
+     const pick={title:sh.querySelector('.bar-title, .bar h1'),body:sh.querySelector('.compose-body .label, .ask .label'),hint:sh.querySelector('.recent span, .recent-more'),button:sh.getElementById('generate'),preview:sh.getElementById('lv-preview'),tab:sh.querySelector('.mode-tabs .tab:not([aria-pressed=true])'),nav:sh.querySelector('.nav button[aria-current=false] span'),navCurrent:sh.querySelector('.nav [aria-current=page] span:last-child')};
+     const out={};for(const [k,e] of Object.entries(pick))out[k]=e?ratio(e):null;const w=backOf(sh.querySelector('.window'));out.windowLum=Math.round(lum(w)*100)/100;out.palette=sh.querySelector('.app').dataset.palette;out.theme=sh.querySelector('.app').dataset.theme;return out;})()`);
+    themeReport.push({viewport:tag,...r,mode:r.theme,theme:name});
+    const low=Object.entries(r).filter(([k,v])=>typeof v==='number'&&!['windowLum'].includes(k)&&v<4.5);
+    if(low.length)throw Error(`${name}: contrast below 4.5 ${JSON.stringify(r)}`);
+    if(/light/.test(name)&&(r.windowLum<0.5||r.theme!=='light'))throw Error(`${name}: light host theme painted dark ${JSON.stringify(r)}`);
+    if(/dark/.test(name)&&(r.windowLum>0.2||r.theme!=='dark'))throw Error(`${name}: dark host theme painted light ${JSON.stringify(r)}`);
+    if(r.palette!=='host')throw Error(`${name}: host palette not used ${JSON.stringify(r)}`);
+    await measure('theme-'+name);
+   }
+   await evaluate(`qa.setTheme('default-dark')`);await sleep(400);
   });
   await step('compose',async()=>{await click('[data-pane="compose"]');await until(`!!${S}.getElementById('request')`);await click('[data-mode="story"]');await measure('compose');});
   await step('references',async()=>{await click('#open-references');await until(`!!${S}.querySelector('.sheet')`);await sleep(300);await measure('references');});
   await step('lore',async()=>{await click('[data-sheet="lore"]');await until(`!!${S}.querySelector('[data-lore-mode]')`);await click('[data-lore-mode="selected"]');await evaluate(`(()=>{const c=${S}.querySelector('input[data-pick="loreIds"][value="book-char"]');if(c&&!c.checked){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));}})()`);await until(`!!${S}.querySelector('[data-lore-entry]')`,8000,'entries');await sleep(200);await measure('lore');await click('[data-lore-mode="st"]');await click('[data-sheet-close="x"]');});
   await step('preview',async()=>{await typeInto('#request','미리보기 확인용 요청');const before=await evaluate(`qa.api.calls.filter(c=>c.name==='generate.raw').length`);await click('#lv-preview');await until(`!!${S}.querySelector('.request-page')`,10000,'prompt history page');const after=await evaluate(`qa.api.calls.filter(c=>c.name==='generate.raw').length`);if(after!==before)throw Error('preview called the model');await sleep(300);await measure('preview');await click('[data-pane="compose"]');await until(`!!${S}.getElementById('request')`);});
-  await step('generate story',async()=>{await evaluate('window.qaReply="story"');await typeInto('#request','비가 그친 뒤 두 사람이 솔직하게 이야기하는 장면');await click('#generate');await until(`!!${S}.querySelector('#result iframe, #result .speak-news')`,10000,'story result');await sleep(900);const page=await evaluate(`${S}.querySelector('#result iframe')?.srcdoc.match(/html,body\\{background:(#[0-9a-f]+)/i)?.[1]||''`);if(page!=='#1c1826')throw Error('reading page does not follow the dark host theme: '+page);await measure('result');});
+  await step('generate story',async()=>{await evaluate('window.qaReply="story"');await typeInto('#request','비가 그친 뒤 두 사람이 솔직하게 이야기하는 장면');await click('#generate');await until(`!!${S}.querySelector('#result iframe, #result .speak-news')`,10000,'story result');await sleep(900);const page=await evaluate(`${S}.querySelector('#result iframe')?.srcdoc.match(/html,body\\{background:(#[0-9a-f]+)/i)?.[1]||''`),ground=await evaluate(`${S}.querySelector('.app').style.getPropertyValue('--ground').trim()`);if(!page||page!==ground)throw Error('reading page does not follow the host palette: '+page+' vs '+ground);await measure('result');});
   await step('more',async()=>{await click('[data-sheet="more"]');await until(`!!${S}.querySelector('.sheet .more')`);await measure('more');await click('[data-sheet-close="x"]');});
   await step('translate',async()=>{await evaluate('window.qaReply="translate"');await click('#translate');await until(`${S}.querySelector('#translate')?.getAttribute('aria-pressed')==='true'`,10000,'translation shown');await sleep(700);await measure('translated');await click('#translate');});
   await step('continue',async()=>{await evaluate('window.qaReply="story"');await evaluate(`(()=>{const t=${S}.getElementById('followup');t.focus();t.value='다음 날 아침';t.dispatchEvent(new Event('input',{bubbles:true}));})()`);await click('#continue');await until(`${S}.querySelectorAll('.read .part').length>=2`,10000,'second part');const sent=await evaluate(`(()=>{const raws=qa.api.calls.filter(c=>c.name==='generate.raw');const last=raws.at(-1).args.messages;return {prior:last.some(m=>m.role==='assistant'&&m.content.includes('폐허의 지붕')),final:last.at(-1).role,model:raws.at(-1).args.model};})()`);if(!sent.prior||sent.final!=='user'||sent.model!=='model-main')throw Error('continue prompt '+JSON.stringify(sent));await sleep(600);await measure('series');});
   await step('add to chat',async()=>{const before=await evaluate(`qa.api.messages.get('chat-1').length`);await click('[data-sheet="more"]');await click('#add-to-chat');if(await evaluate(`!!${S}.querySelector('[data-chat-add-range]')`))await click('[data-chat-add-range="line"]');await until(`!!${S}.getElementById('side-dialog-confirm')`);await click('#side-dialog-confirm');await until(`qa.api.messages.get('chat-1').length>${before}`,8000,'appended');});
+  await step('browse while generating',async()=>{
+   const archived=()=>evaluate(`[...qa.api.storage.keys()].filter(k=>k.startsWith('archive/')).length`);const before=await archived();
+   await evaluate('window.qaReply="story";window.qaDelay=5000');
+   await click('[data-pane="compose"]');await click('[data-mode="story"]');await typeInto('#request','느린 생성 중에 둘러보기');await click('#generate');await sleep(300);
+   const view=()=>evaluate(`${S}.querySelector('.app').dataset.view`);
+   await click('[data-page="archive"]');await sleep(500);if(await view()!=='archive')throw Error('archive view jumped to '+await view());
+   await click('[data-open="5d1c2a10-0000-4000-8000-000000000001"]');await sleep(500);
+   if(await evaluate(`!!${S}.querySelector('.waiting')`))throw Error('opening another article showed the running job instead');
+   const title=await evaluate(`${S}.querySelector('.bar-text h1')?.textContent||''`);if(!/옛 결과|0\.1/.test(title)&&!title)throw Error('other article not shown');
+   await click('[data-pane="compose"]');await sleep(300);if(await evaluate(`!!${S}.getElementById('generate')||!${S}.getElementById('stop')`))throw Error('a second generation could be started while one runs');
+   await click('[data-page="settings"]');await sleep(300);
+   await until(`/보관함에 저장했어요/.test(${S}.getElementById('notice')?.textContent||'')`,10000,'saved toast');
+   if(await view()!=='settings')throw Error('finished run pulled the view to '+await view());
+   if(await archived()!==before+1)throw Error('result not saved to the archive');
+   await measure('browse-while-generating');await evaluate('window.qaDelay=120');await click('[data-page="archive"]');
+  });
   await step('html',async()=>{await click('[data-pane="compose"]');await click('[data-mode="visual"]');await evaluate('window.qaReply="visual"');await typeInto('#request','에이든의 핸드폰');await click('#generate');await until(`!!${S}.querySelector('#result iframe.html-viewer:not(.prose-frame)')`,10000,'html result');await sleep(900);await measure('html');});
   await step('speak',async()=>{await click('[data-pane="compose"]');await click('[data-mode="speak"]');await evaluate('window.qaReply="speak"');await typeInto('#request','민트초코 vs 하와이안 피자');await click('#generate');await until(`!!${S}.querySelector('#result .speak-news')`,10000,'speak cards');await sleep(300);await measure('speak');});
   await step('settings',async()=>{await click('[data-page="settings"]');await until(`!!${S}.querySelector('.settings-home')`);await measure('settings');});
@@ -107,7 +138,8 @@ try{
   });
   await step('chat switch',async()=>{await evaluate(`qa.setState('chat.active',{chatId:'chat-2'})`);await sleep(900);const open=await evaluate(`!!${S}.querySelector('.window:not([hidden])')`);if(!open)throw Error('app not reopened after chat switch');await measure('chat-switch');});
  }
- await writeFile('qa/layout-report.json',JSON.stringify(report,null,2));
+ await writeFile('qa/layout-report.json',JSON.stringify(report,null,2));await writeFile('qa/theme-report.json',JSON.stringify(themeReport,null,2));
+ for(const r of themeReport)console.log(`theme ${r.viewport} ${r.theme}: palette ${r.palette}/${r.mode} · title ${r.title} body ${r.body} hint ${r.hint} button ${r.button} preview ${r.preview} tab ${r.tab} nav ${r.nav} nav-current ${r.navCurrent}`);
  for(const r of report)console.log(`${r.viewport} ${r.view}: app ${r.host.w}x${r.host.h}, min text ${r.minPrimary}px, min meta ${r.minSecondary}px, min tap ${r.minTap}px, text<15 ${r.smallPrimary}, meta<13 ${r.smallSecondary}, taps<44 ${r.shortTaps}, overflow ${r.overflow.length}${r.generateVisible===null?'':', generate '+(r.generateVisible?'visible':'HIDDEN')}`);
  console.log('exempt:',EXEMPT.map(x=>x.selector+' ('+x.reason+')').join(', '));
  if(failures.length){console.error('QA FAIL:\n'+failures.join('\n'));process.exitCode=1;}else console.log(`QA PASS: ${report.length} screenshots in ${shotDir}`);

@@ -38,7 +38,7 @@ export function createFakeSpindle(seed={}){
   tokens:{async countText(text,o){log('tokens.countText',{length:text.length,model:o?.model});return {total_tokens:Math.ceil(text.length/2),model:o?.model||'',modelSource:'explicit',tokenizer_id:'fake',tokenizer_name:'fake-tokenizer',approximate:false};}},
   generate:{
    async dryRun(input,u){log('generate.dryRun',{input,u});return structuredClone(dryRun(input));},
-   async raw(input){log('generate.raw',{...input,signal:undefined});if(seed.rawDelay)await new Promise((resolve,reject)=>{const t=setTimeout(resolve,seed.rawDelay);input.signal?.addEventListener('abort',()=>{clearTimeout(t);reject(Object.assign(Error('AbortError: Generation aborted'),{name:'AbortError'}));});});return {content:seed.rawText?seed.rawText(input):'# 결과\n\n생성된 이야기 본문입니다.\n\n두 번째 문단.',finish_reason:'stop'};},
+   async raw(input){log('generate.raw',{...input,signal:undefined});const delay=typeof seed.rawDelay==='function'?seed.rawDelay():seed.rawDelay;if(delay)await new Promise((resolve,reject)=>{const t=setTimeout(resolve,delay);input.signal?.addEventListener('abort',()=>{clearTimeout(t);reject(Object.assign(Error('AbortError: Generation aborted'),{name:'AbortError'}));});});return {content:seed.rawText?seed.rawText(input):'# 결과\n\n생성된 이야기 본문입니다.\n\n두 번째 문단.',finish_reason:'stop'};},
   },
   userStorage:{
    async getJson(p,o={}){const v=storage.get(p);return v===undefined?(o.fallback??null):JSON.parse(v);},

@@ -23,7 +23,7 @@ const old=[
  {id:'5d1c2a10-0000-4000-8000-000000000003',revision:1,schema:1,mode:'html',content:'<h2>메모</h2><p>정적 HTML 결과</p>',host:{chatId:'chat-1'},createdAt:Date.now()-3600000,requestId:'r3'},
 ];
 const speak={id:'qa-speak',mode:'speak',title:'말하기 카드',request:'질문들',chatId:'chat-1',chatName:'첫 채팅',characterIds:['char-a'],characterNames:['에이든'],content:Array.from({length:3},(_,i)=>`<sideb-response><request>질문 ${i+1}</request><spoken>${Array.from({length:12},(_,j)=>`대답 ${i+1}-${j+1}. 에이든은 천천히 말을 골랐다.`).join('\n\n')}</spoken><inner>속마음 ${i+1}</inner></sideb-response>`).join('\n'),status:'complete',createdAt:Date.now()-1000,favorite:false,settings:{mode:'speak'},action:'new',parentId:null,seriesId:null,tags:[]};
-const api=createFakeSpindle({storage:{...Object.fromEntries(old.map(r=>['records/'+r.id+'.json',JSON.stringify(r)])),'archive/qa-speak.json':JSON.stringify(speak)},onSend:p=>setTimeout(()=>frontend?.(p),5),rawText:input=>window.qaReply==='translate'?translate(input):replies[window.qaReply]||replies.story,rawDelay:120});
+const api=createFakeSpindle({storage:{...Object.fromEntries(old.map(r=>['records/'+r.id+'.json',JSON.stringify(r)])),'archive/qa-speak.json':JSON.stringify(speak)},onSend:p=>setTimeout(()=>frontend?.(p),5),rawText:input=>window.qaReply==='translate'?translate(input):replies[window.qaReply]||replies.story,rawDelay:()=>window.qaDelay??120});
 install(api);
 const state={'chat.active':{chatId:'chat-1',characterId:'char-a'},'persona.activeId':'persona-1','connections.active':{activeProfileId:'conn-1'},'ui.drawer':{open:true,tabId:'side_story:tab'}};
 const subs=new Map(),activators=new Set();
@@ -35,7 +35,11 @@ const ctx={
  events:{on(){return()=>{};}},
 };
 let dispose=setup(ctx);
-window.qa={api,ctx,get dispose(){return dispose;},
+// Host theme variable sets produced by the host's own theme engine (see qa/host-themes.json).
+const hostThemes=await (await fetch('./host-themes.json')).json();
+function setTheme(name){const set=hostThemes[name];if(!set)throw Error('unknown theme '+name);const root=document.documentElement;for(const p of [...root.style])if(p.startsWith('--lumiverse-'))root.style.removeProperty(p);for(const [k,v] of Object.entries(set))root.style.setProperty(k,v);}
+setTheme('default-dark');
+window.qa={api,ctx,setTheme,themes:Object.keys(hostThemes).filter(k=>!k.startsWith('_')),get dispose(){return dispose;},
  // Simulates closing and reopening Lumiverse: the extension is set up again on the same server data.
  remount(){dispose();document.getElementById('tab-host').replaceChildren();dispose=setup(ctx);},
  shadow:()=>document.getElementById('st-sidestory-root')?.shadowRoot,

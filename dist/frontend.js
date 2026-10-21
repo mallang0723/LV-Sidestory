@@ -1291,22 +1291,6 @@ button#new-result-chat{display:none!important}
    do not hand it on to #reader: the page looks stuck (seen on Firefox for Android; reproducible in
    Chromium). Make #reader the only scroller there; the sticky action bar now sticks to #reader. */
 #reader .facet-plan-preview,#reader .facet-plan-preview .facet-plan-scroll{overflow:visible;overscroll-behavior:auto;height:auto;max-height:none}
-/* Host theme. Upstream paints its own palette (white/burgundy, or its dark set). While Side Story's light/dark
-   matches Lumiverse's current mode (the default: it follows the host until the user picks 밝게/어둡게 in
-   Side Story's settings on this device), the palette comes from the Lumiverse theme variables, so light, dark
-   and custom host themes carry over. A colour picked under 설정 › 테마 색 still wins (it is set inline).
-   Opaque host colours are used for surfaces because sheets and layers stack on top of each other. */
-.app[data-theme][data-host-theme=match]{
- --ground:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
- --surface:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
- --paper:var(--lumiverse-card-bg-solid,var(--lumiverse-bg-opaque,#181422));
- --ink:var(--lumiverse-text,#eeeaf5);--text:var(--lumiverse-text,#eeeaf5);
- --muted:var(--lumiverse-text-muted,#aba5ba);--faint:var(--lumiverse-text-dim,#8a8499);
- --line:var(--lumiverse-border-neutral,var(--lumiverse-border,rgba(128,128,128,.2)));
- --accent:var(--lumiverse-primary,#9370db);--on-accent:var(--lumiverse-primary-contrast,#fff);
- --accent-soft:var(--lumiverse-primary-010,rgba(147,112,219,.1));--accent-line:var(--lumiverse-primary-050,rgba(147,112,219,.5));
- --danger:var(--lumiverse-danger,#ef4444);--box:var(--lumiverse-fill-medium,rgba(128,128,128,.25));--wash:var(--lumiverse-fill-subtle,rgba(128,128,128,.08));
-}
 `;
   const SideReplace = (() => {
     function clean(rows) {
@@ -8769,58 +8753,93 @@ ${item.inner}` : ""].filter(Boolean).join(`
   try {
     lvThemePicked = localStorage.getItem(LV_THEME_KEY) === "1";
   } catch {}
-  function lvColor(name) {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (!v)
+  const LV_TOKENS = ["--ground", "--surface", "--paper", "--ink", "--text", "--muted", "--faint", "--line", "--accent", "--on-accent", "--accent-soft", "--accent-line", "--danger", "--box", "--wash"];
+  function lvParse(value) {
+    if (!value)
       return null;
     const probe = document.createElement("i");
-    probe.style.color = v;
+    probe.style.color = "";
+    probe.style.color = value;
+    if (!probe.style.color)
+      return null;
     probe.style.display = "none";
     document.body.append(probe);
     const c = getComputedStyle(probe).color;
     probe.remove();
     const m = c.match(/[\d.]+/g);
-    return m ? { css: c, r: +m[0], g: +m[1], b: +m[2], a: m[3] === undefined ? 1 : +m[3] } : null;
+    return m && m.length >= 3 ? { r: +m[0], g: +m[1], b: +m[2], a: m[3] === undefined ? 1 : +m[3] } : null;
   }
-  function lvHex(c, over) {
-    const mix = (k) => Math.round(over ? c[k] * c.a + over[k] * (1 - c.a) : c[k]);
-    return "#" + ["r", "g", "b"].map((k) => mix(k).toString(16).padStart(2, "0")).join("");
+  const lvVar = (name) => lvParse(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+  const lvOver = (c, base) => c ? { r: c.r * c.a + base.r * (1 - c.a), g: c.g * c.a + base.g * (1 - c.a), b: c.b * c.a + base.b * (1 - c.a), a: 1 } : null;
+  const lvMix = (a, b, t) => ({ r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: 1 });
+  const lvHex = (c) => "#" + ["r", "g", "b"].map((k) => Math.round(Math.max(0, Math.min(255, c[k]))).toString(16).padStart(2, "0")).join("");
+  const lvLum = (c) => {
+    const f = (v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  };
+  const lvContrast = (a, b) => {
+    const x = lvLum(a), y = lvLum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  function lvEnsure(c, ink, bg, min = 4.5) {
+    if (!c)
+      return ink;
+    let out = c;
+    for (let t = 0;t <= 1 && lvContrast(out, bg) < min; t += 0.05)
+      out = lvMix(c, ink, t);
+    return lvContrast(out, bg) < min ? ink : out;
   }
-  function lvHostMode() {
-    const bg = lvColor("--lumiverse-bg-opaque") || lvColor("--lumiverse-bg");
-    if (!bg)
+  const LV_UPSTREAM = { light: { ground: "#ffffff", paper: "#ffffff", ink: "#333333", text: "#555555", muted: "#888888", faint: "#ababab", line: "#ececec", accent: "#ad2c45", danger: "#b4263f" }, dark: { ground: "#17171a", paper: "#17171a", ink: "#e8e8e8", text: "#c4c4c4", muted: "#8e8e93", faint: "#6c6c70", line: "#2a2a2d", accent: "#e8708a", danger: "#f2788e" } };
+  function lvHostPalette() {
+    const deep = lvVar("--lumiverse-bg-deep"), raw2 = lvVar("--lumiverse-bg");
+    if (!raw2)
       return null;
-    const l = (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255;
-    return l < 0.5 ? "dark" : "light";
+    const floor = deep && deep.a >= 0.99 ? deep : lvOver(deep, { r: 255, g: 255, b: 255, a: 1 }) || { r: 255, g: 255, b: 255, a: 1 };
+    const bg = lvOver(raw2, floor), ink = lvOver(lvVar("--lumiverse-text"), bg);
+    if (!ink || lvContrast(ink, bg) < 4.5)
+      return null;
+    const elevated = lvOver(lvVar("--lumiverse-bg-elevated"), bg), paper = elevated && lvContrast(ink, elevated) >= 4.5 ? elevated : bg;
+    const accentRaw = lvOver(lvVar("--lumiverse-primary"), bg) || ink;
+    return { mode: lvLum(bg) < 0.18 ? "dark" : "light", ground: bg, paper, ink, text: ink, muted: lvOver(lvVar("--lumiverse-text-muted"), bg), faint: lvOver(lvVar("--lumiverse-text-dim"), bg), line: lvOver(lvVar("--lumiverse-border-neutral") || lvVar("--lumiverse-border"), bg) || lvMix(bg, ink, 0.15), accent: accentRaw, danger: lvOver(lvVar("--lumiverse-danger"), bg) };
   }
-  function lvSyncTheme() {
-    const mode = lvHostMode();
-    if (!mode) {
-      delete ui.dataset.hostTheme;
-      return false;
+  function lvUpstreamPalette(mode) {
+    const u = LV_UPSTREAM[mode], p = lvParse;
+    return { mode, ground: p(u.ground), paper: p(u.paper), ink: p(u.ink), text: p(u.text), muted: p(u.muted), faint: p(u.faint), line: p(u.line), accent: p(u.accent), danger: p(u.danger) };
+  }
+  let lvPaletteKey = "";
+  function lvApplyPalette() {
+    const cs = getComputedStyle(document.documentElement), key = ["--lumiverse-bg", "--lumiverse-bg-deep", "--lumiverse-bg-elevated", "--lumiverse-text", "--lumiverse-text-muted", "--lumiverse-text-dim", "--lumiverse-primary", "--lumiverse-border-neutral"].map((k) => cs.getPropertyValue(k)).join("|") + "|" + s.theme + "|" + lvThemePicked + "|" + s.accentColor;
+    if (key === lvPaletteKey && ui.style.getPropertyValue("--ground"))
+      return;
+    const host2 = lvHostPalette(), hostMode = host2?.mode || null;
+    if (hostMode && !lvThemePicked)
+      s.theme = hostMode;
+    const pal = host2 && host2.mode === s.theme ? host2 : lvUpstreamPalette(s.theme === "dark" ? "dark" : "light");
+    const { ground: bg, ink } = pal, text = lvEnsure(pal.text, ink, bg), muted = lvEnsure(pal.muted, ink, bg), faint = lvEnsure(pal.faint, ink, bg);
+    const accent = lvEnsure(pal.accent, ink, bg, 3), onAccent = [{ r: 255, g: 255, b: 255, a: 1 }, { r: 17, g: 17, b: 17, a: 1 }].sort((a, b) => lvContrast(b, accent) - lvContrast(a, accent))[0];
+    const values = { "--ground": bg, "--surface": bg, "--paper": pal.paper, "--ink": ink, "--text": text, "--muted": muted, "--faint": faint, "--line": pal.line, "--accent": accent, "--on-accent": onAccent, "--accent-soft": lvMix(bg, accent, 0.12), "--accent-line": lvMix(bg, accent, 0.45), "--danger": lvEnsure(pal.danger || accent, ink, bg, 3), "--box": lvMix(bg, ink, 0.2), "--wash": lvMix(bg, ink, 0.05) };
+    const custom = !!s.accentColor;
+    for (const k of LV_TOKENS) {
+      if (custom && ["--accent", "--on-accent", "--accent-soft", "--accent-line"].includes(k))
+        continue;
+      ui.style.setProperty(k, lvHex(values[k]));
     }
-    let changed = false;
-    if (!lvThemePicked && s.theme !== mode) {
-      s.theme = mode;
-      changed = true;
-    }
-    const match = s.theme === mode;
-    ui.dataset.hostTheme = match ? "match" : "off";
-    if (match) {
-      const bg = lvColor("--lumiverse-bg-opaque"), ink = lvColor("--lumiverse-text"), accent = lvColor("--lumiverse-primary"), line = lvColor("--lumiverse-border-neutral") || lvColor("--lumiverse-border");
-      if (bg && ink) {
-        const base = { r: bg.r, g: bg.g, b: bg.b };
-        PAGE_COLORS[mode] = { bg: lvHex(bg), ink: lvHex(ink, base), accent: accent ? lvHex(accent, base) : PAGE_COLORS[mode].accent, line: line ? lvHex(line, base) : PAGE_COLORS[mode].line };
-      }
-    }
-    return changed;
+    ui.dataset.hostTheme = pal === host2 ? "match" : "off";
+    ui.dataset.palette = pal === host2 ? "host" : "upstream";
+    PAGE_COLORS[s.theme === "dark" ? "dark" : "light"] = { bg: lvHex(bg), ink: lvHex(text), accent: lvHex(accent), line: lvHex(pal.line) };
+    lvPaletteKey = key.replace(/\|[^|]*\|[^|]*\|[^|]*$/, "") + "|" + s.theme + "|" + lvThemePicked + "|" + s.accentColor;
   }
   {
     const upstreamApplyAccent = applyAccent;
     applyAccent = function() {
-      if (lvSyncTheme())
-        ui.dataset.theme = s.theme;
+      const before = s.theme;
       upstreamApplyAccent();
+      lvApplyPalette();
+      if (s.theme !== before)
+        ui.dataset.theme = s.theme;
     };
   }
   root.addEventListener("click", (e) => {
@@ -8834,7 +8853,7 @@ ${item.inner}` : ""].filter(Boolean).join(`
   {
     const sig = () => {
       const cs = getComputedStyle(document.documentElement);
-      return ["--lumiverse-bg-opaque", "--lumiverse-bg", "--lumiverse-text", "--lumiverse-primary", "--lumiverse-border"].map((k) => cs.getPropertyValue(k)).join("|");
+      return ["--lumiverse-bg", "--lumiverse-bg-deep", "--lumiverse-bg-elevated", "--lumiverse-text", "--lumiverse-primary"].map((k) => cs.getPropertyValue(k)).join("|");
     };
     let last = sig();
     const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(() => {
@@ -8848,8 +8867,56 @@ ${item.inner}` : ""].filter(Boolean).join(`
     observer?.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
     stHost.onCleanup(() => observer?.disconnect());
   }
-  lvSyncTheme();
+  lvApplyPalette();
   ui.dataset.theme = s.theme;
+  let lvOpenedDuringRun = false;
+  {
+    const upstreamRun = run;
+    run = function(action) {
+      lvOpenedDuringRun = false;
+      return upstreamRun(action);
+    };
+  }
+  {
+    const upstreamOpenRecord = openRecord;
+    openRecord = function(id) {
+      if (busy)
+        lvOpenedDuringRun = true;
+      return upstreamOpenRecord(id);
+    };
+  }
+  {
+    const upstreamThreadScreen = threadScreen;
+    threadScreen = function() {
+      if (busy && pending?.action === "new" && lvOpenedDuringRun && current) {
+        const running = pending;
+        pending = null;
+        try {
+          return upstreamThreadScreen();
+        } finally {
+          pending = running;
+        }
+      }
+      return upstreamThreadScreen();
+    };
+  }
+  function lvWatchingRun(record) {
+    if (page !== "create" || mobilePane !== "result")
+      return false;
+    if (pending)
+      return pending.action === "new" ? !lvOpenedDuringRun : threadKey(current) === pending.thread;
+    return !current || current.id === record?.id;
+  }
+  {
+    const upstreamShow = showCompletedResult;
+    showCompletedResult = function(record, translation, target, signal) {
+      if (alive && !signal?.aborted && target === activeChat() && !lvWatchingRun(record)) {
+        say(`${translation ? "번역을 마쳤어요" : "완성했어요"}. 보관함에 저장했어요 · ${String(record?.title || "").slice(0, 40)}`);
+        return false;
+      }
+      return upstreamShow(record, translation, target, signal);
+    };
+  }
 }
 
 // src/lumiverse/rpc.js
