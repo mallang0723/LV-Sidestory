@@ -1,0 +1,9 @@
+{
+  "name": "st-sidestory",
+  "version": "0.17.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "python3 build.py"
+  }
+}

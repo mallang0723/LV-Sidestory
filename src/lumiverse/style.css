@@ -1,0 +1,8 @@
+/* ---- src/lumiverse/style.css — Lumiverse drawer overrides (appended after upstream style.css) */
+:host{position:relative!important;inset:auto!important;display:block!important;width:100%!important;height:100%!important;z-index:auto!important;overflow:hidden!important}
+:host([hidden]){display:none!important}
+.app{container:sidestory/size;position:relative}
+/* The drawer has its own close button and tab. */
+#close{display:none!important}
+/* RP preset switching is SillyTavern-only (Lumiverse uses the active preset); the rows stay out of the way. */
+button[data-sheet=preset],.stack>div:has(>.group>button[data-sheet=preset]){display:none!important}
