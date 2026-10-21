@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createFakeSpindle} from './fake-spindle.js';
 import {createService,allPages,CURRENT} from '../src/lumiverse/service.js';
-import {shapeHostPrompt,locateHistory,fillNames} from '../src/lumiverse/assembly.js';
+import {shapeHostPrompt,locateHistory,fillNames,HISTORY_BLOCKED} from '../src/lumiverse/assembly.js';
 import {createRpc} from '../src/lumiverse/rpc.js';
 import {createLumiverseHost} from '../src/lumiverse/host.js';
 import {install} from '../src/backend.js';
@@ -64,35 +64,6 @@ test('chat view follows upstream st-host shape and refuses other users’ chats'
  assert.deepEqual(msgs.map(m=>m.id),['0','1','2','3']);
  assert.equal(msgs[2].extra.hiddenFromAI,true);
  assert.equal(msgs[1].role,'user');
-});
-
-test('dry-run shaping: history limit, series anchor, exclusion and earlier parts',()=>{
- const api=createFakeSpindle();
- const source=[...api.messages.get('chat-1')];
- const dry={messages:[{role:'system',content:'P'},{role:'user',content:'폐허의 문이 열렸다. 에이든은 칼을 고쳐 쥐었다.'},{role:'system',content:'AN'},{role:'user',content:'누구세요? 여기서 뭘 하고 있었어요?'},{role:'assistant',content:'에이든은 잠시 망설이다가 대답했다. 길을 잃었을 뿐이야.'},{role:'system',content:'POST'}],
-  breakdown:[{type:'block',content:'P'},{type:'chat_history',messageCount:3,firstMessageIndex:1},{type:'authors_note',content:'AN'},{type:'block',content:'POST'}]};
- const located=locateHistory(dry,source);
- assert.deepEqual(located.indices,[1,3,4]);assert.ok(located.reliable);
- const plain=shapeHostPrompt({dryRun:dry,source,quietPrompt:'<SIDESTORY>요청</SIDESTORY>'});
- assert.equal(plain.messages.length,7);assert.deepEqual(plain.messages.at(-1),{role:'user',content:'<SIDESTORY>요청</SIDESTORY>'});
- const limited=shapeHostPrompt({dryRun:dry,source,plan:{limit:1},quietPrompt:'Q'});
- assert.deepEqual(limited.messages.map(m=>m.content),['P','AN','에이든은 잠시 망설이다가 대답했다. 길을 잃었을 뿐이야.','POST','Q']);
- assert.deepEqual(limited.report,{before:3,after:1,anchor:null});
- // Anchor at message #1 (id chat-1-m1): later chat messages are not part of this series' canon.
- const anchored=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:1,sendDate:'chat-1-m1',name:'유리'},append:[{role:'assistant',content:'1편 본문'}]},quietPrompt:'Q'});
- assert.deepEqual(anchored.messages.map(m=>m.content),['P','폐허의 문이 열렸다. 에이든은 칼을 고쳐 쥐었다.','AN','누구세요? 여기서 뭘 하고 있었어요?','1편 본문','POST','Q']);
- assert.equal(anchored.report.anchor,'applied');assert.equal(anchored.report.appended,1);
- const missing=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:9,sendDate:'gone',name:''}},quietPrompt:'Q'});
- assert.equal(missing.report.anchor,'missing');assert.equal(missing.report.after,3);
- const excluded=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true,append:[{role:'user',content:'U'}]},quietPrompt:'Q',auxiliaryTurns:[{role:'assistant',content:'A'},{role:'user',content:'B'}]});
- assert.deepEqual(excluded.messages.map(m=>m.content),['P','U','AN','POST','Q','A','B']);
-});
-
-test('selected-entries mode removes the host’s own world info rows',()=>{
- const dry={messages:[{role:'system',content:'P'},{role:'system',content:'WI-1'},{role:'system',content:'앞\nWI-2\n뒤'}],breakdown:[{type:'world_info',content:'WI-1'},{type:'world_info',content:'WI-2'},{type:'world_info',content:'없는 항목'}]};
- const r=shapeHostPrompt({dryRun:dry,source:[],quietPrompt:'Q',selectedLoreOnly:true});
- assert.deepEqual(r.messages.map(m=>m.content),['P','앞\n\n뒤','Q']);
- assert.deepEqual(r.meta.worldInfo,{stripped:2,unmatched:1});
 });
 
 test('generation passes the connection model explicitly; host path keeps preset sampling',async()=>{
@@ -201,27 +172,79 @@ test('optional preview assembles the prompt but never calls the model',async()=>
  host.cleanup();rpc.dispose();w.dispose();
 });
 
-test('an unverified history map leaves the assembled prompt alone',()=>{
- const api=createFakeSpindle();const source=[...api.messages.get('chat-1')];
- // A merged system row whose text is not any breakdown block: the history count cannot be matched.
- const dry={messages:[{role:'system',content:'P'},{role:'system',content:'P+합쳐진 깊이 블록'},{role:'user',content:'완전히 다른 내용 하나'},{role:'assistant',content:'완전히 다른 내용 둘입니다'},{role:'user',content:'완전히 다른 내용 셋입니다'}],
-  breakdown:[{type:'block',content:'P'},{type:'chat_history',messageCount:3,firstMessageIndex:1},{type:'block',content:'깊이 블록'}]};
- const r=shapeHostPrompt({dryRun:dry,source,plan:{limit:1,exclude:false,anchor:{index:1,sendDate:'chat-1-m1',name:''},append:null},quietPrompt:'Q'});
- assert.deepEqual(r.messages.map(m=>m.content),[...dry.messages.map(m=>m.content),'Q']);
- assert.equal(r.report.anchor,'missing');assert.equal(r.report.skipped,true);assert.equal(r.meta.historyMapping,'unreliable');
-});
-
 test('Lumiverse system messages stay system rows',async()=>{
  const api=createFakeSpindle();api.messages.get('chat-1').push({id:'sys',chat_id:'chat-1',index_in_chat:4,is_user:false,name:'System',role:'system',content:'시스템 안내',extra:{spindle_role:'system'}});
  const rows=await createService(api).handle(U,'messages',{chatId:'chat-1'});
  assert.equal(rows.at(-1).role,'system');assert.equal(rows.at(-1).system,true);
 });
 
-test('consecutive user messages count as one history row, like Lumiverse assembly',()=>{
- const m=(i,is_user,content)=>({id:'m'+i,index_in_chat:i,is_user,content,extra:{}});
- const source=[m(0,false,'첫 번째 캐릭터 대사입니다 길게'),m(1,true,'유저가 먼저 보낸 메시지입니다'),m(2,true,'유저가 이어서 보낸 메시지입니다'),m(3,false,'캐릭터의 마지막 대답입니다 길게')];
- const dry={messages:[{role:'system',content:'P'},{role:'assistant',content:source[0].content},{role:'user',content:source[1].content+'\n'+source[2].content},{role:'assistant',content:source[3].content}],breakdown:[{type:'block',content:'P'},{type:'chat_history',messageCount:3,firstMessageIndex:1}]};
- const r=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:2,sendDate:'m2',name:''}},quietPrompt:'Q'});
- assert.equal(r.meta.historyMapping,'matched');assert.equal(r.report.anchor,'applied');
- assert.deepEqual(r.messages.map(m=>m.role),['system','assistant','user','user']);
+
+// ---- "현재 루미버스 연결" history shaping, on the host's real dryRun contract (no chat_history breakdown).
+const turn=(i,is_user,content,extra={})=>({id:'m'+i,index_in_chat:i,is_user,role:is_user?'user':'assistant',content,extra});
+const HOST=(rows,{dropped=0}={})=>({messages:rows,breakdown:[{type:'block',content:'P'},{type:'authors_note',content:'AN'}],contextClipStats:{enabled:true,messagesDropped:dropped}});
+
+test('host contract: “본편 안 넣음” removes the chat although the breakdown has no chat_history (review C1)',()=>{
+ const source=[turn(0,false,'안녕'),turn(1,true,'응'),turn(2,false,'반가워')];
+ const dry={messages:[{role:'system',content:'P'},{role:'assistant',content:'안녕'},{role:'user',content:'응'},{role:'assistant',content:'반가워'}],breakdown:[{type:'block',content:'P'}]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.equal(r.blocked,undefined);assert.deepEqual(r.messages.map(m=>m.content),['P','Q']);
+ assert.deepEqual(r.report,{before:3,after:0,anchor:null});assert.equal(r.meta.historyMapping,'matched');assert.equal(r.meta.historyMessages,'3/3');
+});
+
+test('short chat after an unlisted injection: only the chat rows are removed (review C1 short-chat case)',()=>{
+ const source=[turn(0,false,'안녕'),turn(1,true,'응')];
+ const dry={messages:[{role:'system',content:'PREFIX KEEP'},{role:'system',content:'UNLISTED INJECTION KEEP'},{role:'assistant',content:'안녕'},{role:'user',content:'응'}],breakdown:[{type:'block',content:'PREFIX KEEP'}]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.deepEqual(r.messages.map(m=>m.content),['PREFIX KEEP','UNLISTED INJECTION KEEP','Q']);
+});
+
+test('recent N, series anchor and earlier parts on the host contract (injections between turns, merged user turns)',()=>{
+ const source=[turn(0,false,'폐허의 문이 열렸다.'),turn(1,true,'누구세요?'),turn(2,true,'거기 누구 있어요?'),turn(3,false,'길을 잃었을 뿐이야.'),turn(4,false,'숨김',{hidden:true})];
+ const dry=HOST([{role:'system',content:'P'},{role:'assistant',content:'폐허의 문이 열렸다.'},{role:'system',content:'AN'},{role:'user',content:'누구세요?\n\n거기 누구 있어요?'},{role:'assistant',content:'길을 잃었을 뿐이야.'},{role:'system',content:'POST'}]);
+ assert.deepEqual(locateHistory(dry,source).indices,[1,3,4]);
+ const limited=shapeHostPrompt({dryRun:dry,source,plan:{limit:1},quietPrompt:'Q'});
+ assert.deepEqual(limited.messages.map(m=>m.content),['P','AN','길을 잃었을 뿐이야.','POST','Q']);
+ const anchored=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:2,sendDate:'m2',name:''},append:[{role:'assistant',content:'1편 본문'}]},quietPrompt:'Q',auxiliaryTurns:[{role:'assistant',content:'A'},{role:'user',content:'B'}]});
+ assert.equal(anchored.report.anchor,'applied');assert.equal(anchored.report.appended,1);
+ assert.deepEqual(anchored.messages.map(m=>m.content),['P','폐허의 문이 열렸다.','AN','누구세요?\n\n거기 누구 있어요?','1편 본문','POST','Q','A','B']);
+ const missing=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:9,sendDate:'gone',name:''}},quietPrompt:'Q'});
+ assert.equal(missing.report.anchor,'missing');assert.equal(missing.report.after,3);
+});
+
+test('history the context budget dropped still counts as verified; group name prefixes match',()=>{
+ const source=[turn(0,false,'아주 오래된 첫 대사'),turn(1,true,'질문'),turn(2,false,'대답')];
+ const dry=HOST([{role:'system',content:'P'},{role:'user',content:'질문'},{role:'assistant',content:'아드리안: 대답'}],{dropped:1});
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.equal(r.meta.historyMapping,'matched');assert.deepEqual(r.messages.map(m=>m.content),['P','Q']);
+});
+
+test('unverifiable history fails closed for 안 넣음 / 최근 N, and is left alone for 전체 (review C1)',()=>{
+ const source=[turn(0,false,'{{char}}가 웃었다.'),turn(1,true,'안녕')];
+ // The host resolved the macro, so the first turn cannot be matched to the chat.
+ const dry=HOST([{role:'system',content:'P'},{role:'assistant',content:'아드리안가 웃었다.'},{role:'user',content:'안녕'}]);
+ const excluded=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.equal(excluded.blocked,HISTORY_BLOCKED);assert.equal(excluded.meta.historyMapping,'unverified');
+ assert.equal(shapeHostPrompt({dryRun:dry,source,plan:{limit:1},quietPrompt:'Q'}).blocked,HISTORY_BLOCKED);
+ const all=shapeHostPrompt({dryRun:dry,source,plan:{limit:null,anchor:{index:0,sendDate:'m0',name:''}},quietPrompt:'Q'});
+ assert.equal(all.blocked,undefined);assert.equal(all.report.anchor,'missing');assert.deepEqual(all.messages.map(m=>m.content),['P','아드리안가 웃었다.','안녕','Q']);
+ assert.equal(shapeHostPrompt({dryRun:dry,source,plan:{limit:5},quietPrompt:'Q'}).blocked,undefined,'asking for more than there is changes nothing');
+});
+
+test('the service refuses to send when exclusion cannot be honoured',async()=>{
+ const api=createFakeSpindle({dryRun:()=>({messages:[{role:'system',content:'P'},{role:'assistant',content:'바뀐 첫 메시지'},{role:'user',content:'바뀐 둘째'}],breakdown:[],contextClipStats:{enabled:false}})});
+ const service=createService(api);
+ await assert.rejects(service.handle(U,'generate',{runId:'r',chatId:'chat-1',payload:{connectionId:CURRENT,useSillyTavernContext:true,quietPrompt:'Q',messages:[],parameters:{maxTokens:100},history:{limit:null,anchor:null,exclude:true,append:null}}}),/본편 대화를 정확히 가려내지 못했어요/);
+ assert.equal(api.calls.filter(c=>c.name==='generate.raw').length,0);
+});
+
+test('selected-entries mode removes the host’s own world info rows, preferring the world-info role and never chat rows',()=>{
+ const dry={messages:[{role:'system',content:'P'},{role:'system',content:'WI-1'},{role:'system',content:'앞\nWI-2\n뒤'}],breakdown:[{type:'world_info',content:'WI-1'},{type:'world_info',content:'WI-2'},{type:'world_info',content:'없는 항목'}]};
+ const r=shapeHostPrompt({dryRun:dry,source:[],quietPrompt:'Q',selectedLoreOnly:true});
+ assert.deepEqual(r.messages.map(m=>m.content),['P','앞\n\n뒤','Q']);assert.deepEqual(r.meta.worldInfo,{stripped:2,unmatched:1});
+ // Review repro: the same sentence as a user row and a system WI row.
+ const dup=shapeHostPrompt({dryRun:{messages:[{role:'user',content:'SAME TEXT'},{role:'system',content:'SAME TEXT'}],breakdown:[{type:'world_info',role:'system',content:'SAME TEXT'}]},selectedLoreOnly:true});
+ assert.deepEqual(dup.messages,[{role:'user',content:'SAME TEXT'}]);
+ // A chat line identical to a WI entry stays when the history is verified.
+ const chat=shapeHostPrompt({dryRun:{messages:[{role:'system',content:'SAME'},{role:'user',content:'SAME'}],breakdown:[{type:'world_info',content:'SAME'}]},source:[turn(0,true,'SAME')],selectedLoreOnly:true});
+ assert.deepEqual(chat.messages,[{role:'user',content:'SAME'}]);
 });

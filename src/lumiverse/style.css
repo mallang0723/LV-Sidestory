@@ -30,3 +30,19 @@ button#new-result-chat{display:none!important}
    do not hand it on to #reader: the page looks stuck (seen on Firefox for Android; reproducible in
    Chromium). Make #reader the only scroller there; the sticky action bar now sticks to #reader. */
 #reader .facet-plan-preview,#reader .facet-plan-preview .facet-plan-scroll{overflow:visible;overscroll-behavior:auto;height:auto;max-height:none}
+/* Host theme. Upstream paints its own palette (white/burgundy, or its dark set). While Side Story's light/dark
+   matches Lumiverse's current mode (the default: it follows the host until the user picks 밝게/어둡게 in
+   Side Story's settings on this device), the palette comes from the Lumiverse theme variables, so light, dark
+   and custom host themes carry over. A colour picked under 설정 › 테마 색 still wins (it is set inline).
+   Opaque host colours are used for surfaces because sheets and layers stack on top of each other. */
+.app[data-theme][data-host-theme=match]{
+ --ground:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
+ --surface:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
+ --paper:var(--lumiverse-card-bg-solid,var(--lumiverse-bg-opaque,#181422));
+ --ink:var(--lumiverse-text,#eeeaf5);--text:var(--lumiverse-text,#eeeaf5);
+ --muted:var(--lumiverse-text-muted,#aba5ba);--faint:var(--lumiverse-text-dim,#8a8499);
+ --line:var(--lumiverse-border-neutral,var(--lumiverse-border,rgba(128,128,128,.2)));
+ --accent:var(--lumiverse-primary,#9370db);--on-accent:var(--lumiverse-primary-contrast,#fff);
+ --accent-soft:var(--lumiverse-primary-010,rgba(147,112,219,.1));--accent-line:var(--lumiverse-primary-050,rgba(147,112,219,.5));
+ --danger:var(--lumiverse-danger,#ef4444);--box:var(--lumiverse-fill-medium,rgba(128,128,128,.25));--wash:var(--lumiverse-fill-subtle,rgba(128,128,128,.08));
+}

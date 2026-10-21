@@ -68,10 +68,18 @@ export function identitySourceIds(plan,{characters=[],personas=[]}={}){
 export function migrateRecord(old,context={}){
  if(!old||typeof old!=='object'||typeof old.id!=='string'||typeof old.content!=='string')return null;
  const chatId=str(old.host?.chatId,200);
- // Records that came from an ST backup still carry the original upstream record: restore it.
+ // Records that came from an ST backup still carry the original upstream record. It restores the metadata
+ // (title, folder, tags, series), but the 0.1.x record stays the owner of its own content: an edit made in
+ // 0.1.x (childRecord copied the whole parent, snapshot included) keeps its own id, its edited text and its
+ // link to the parent. Only an unedited import may take the original upstream id back (see migrateRecords).
  const upstream=old.upstreamArchive?.record;
  if(upstream&&typeof upstream==='object'&&typeof upstream.id==='string'&&UPSTREAM_MODES.has(upstream.mode)&&typeof upstream.content==='string'){
-  return {...structuredClone(upstream),chatId:chatId||'',favorite:!!(upstream.favorite||old.favorite),migratedFrom:'lumiverse-0.1',lvLegacy:{id:old.id,host:old.host||{},needsRemap:!!old.needsRemap,stChatId:str(upstream.chatId,300)}};
+  const edited=!!old.parentId&&old.requestId==null||old.content!==upstream.content;
+  const r={...structuredClone(upstream),id:old.id,content:old.content,chatId:chatId||'',favorite:!!(upstream.favorite||old.favorite),migratedFrom:'lumiverse-0.1',
+   lvLegacy:{id:old.id,host:old.host||{},needsRemap:!!old.needsRemap,stChatId:str(upstream.chatId,300),upstreamId:upstream.id,parentId:old.parentId??null}};
+  if(edited){Object.assign(r,{action:'edit',parentId:old.parentId||null,createdAt:Number.isFinite(old.createdAt)?old.createdAt:Date.now(),favorite:old.favorite===true});delete r.translationView;delete r.translationRecovery;delete r.recap;}
+  else r.preferredId=upstream.id;
+  return r;
  }
  const mode=MODE[old.mode]||'story';
  const createdAt=Number.isFinite(old.createdAt)?old.createdAt:Date.now();
@@ -101,16 +109,34 @@ export function migrateRecord(old,context={}){
  return record;
 }
 
-/** Converts a batch; drops ids that already exist in the new archive. Returns {records, skipped, failed}. */
-export function migrateRecords(oldRows,existingIds=new Set(),context={}){
- const out=[],seen=new Set(existingIds);let skipped=0,failed=0;
+/**
+ * Converts a batch. `existing` is the new archive's records (or ids). A 0.1.x record already migrated (same
+ * lvLegacy.id) is skipped; nothing else is dropped: when two records would share an id (an unedited ST import
+ * imported twice, or an archive record with that id), the later one keeps its own 0.1.x id. Parent links are
+ * re-pointed through the id map, so edits stay attached to their (possibly renamed) parent.
+ * Returns {records, skipped, failed}.
+ */
+export function migrateRecords(oldRows,existing=[],context={}){
+ const existingRows=[...(existing instanceof Set?[...existing].map(id=>({id})):existing||[])];
+ const taken=new Set(existingRows.map(r=>r.id)),done=new Set(existingRows.map(r=>r.lvLegacy?.id).filter(Boolean));
+ const out=[],idMap=new Map();let skipped=0,failed=0;
  for(const old of Array.isArray(oldRows)?oldRows:[]){
+  if(old?.id&&done.has(old.id)){skipped++;continue;}
   let r=null;try{r=migrateRecord(old,context);}catch{r=null;}
   if(!r){failed++;continue;}
-  if(seen.has(r.id)){skipped++;continue;}
-  seen.add(r.id);out.push(r);
+  const preferred=r.preferredId;delete r.preferredId;
+  if(preferred&&!taken.has(preferred))r.id=preferred;
+  if(taken.has(r.id)){
+   const twin=existingRows.find(x=>x.id===r.id);
+   if(twin&&twin.content===r.content&&!twin.lvLegacy){skipped++;idMap.set(old.id,r.id);continue;} // the same ST record restored directly
+   if(old.id!==r.id&&!taken.has(old.id))r.id=old.id;else{skipped++;idMap.set(old.id,r.id);continue;} // that id is already in the archive: keep what is there
+  }
+  taken.add(r.id);idMap.set(old.id,r.id);out.push(r);
  }
- // Edits point at their parent; drop links to parents that did not survive.
- const ids=new Set([...seen]);for(const r of out)if(r.parentId&&!ids.has(r.parentId)){r.parentId=null;r.action='new';}
+ for(const r of out){
+  if(!r.parentId)continue;
+  const mapped=idMap.get(r.parentId)||(taken.has(r.parentId)?r.parentId:null);
+  if(mapped&&mapped!==r.id)r.parentId=mapped;else{r.parentId=null;if(r.action==='edit')r.action='new';}
+ }
  return {records:out,skipped,failed};
 }

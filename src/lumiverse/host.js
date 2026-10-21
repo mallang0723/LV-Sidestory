@@ -125,7 +125,7 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
 
  const host={
   embedded:true,SillyTavern,
-  indexedDB:createArchiveIDB({rpc,real:realIndexedDB,onMigration:m=>{if(m?.migrated)migrationNotice=`이전 버전(0.1.x)의 결과 ${m.migrated}개를 새 보관함으로 옮겼어요. 원래 기록도 그대로 남겨 뒀어요.`;}}),
+  indexedDB:createArchiveIDB({rpc,real:realIndexedDB,onMigration:m=>{if(m?.error)migrationNotice=`이전 버전(0.1.x)의 결과를 옮기지 못했어요. 다음에 열 때 다시 시도해요. (${m.error})`;else if(m?.migrated&&!m.already)migrationNotice=`이전 버전(0.1.x)의 결과 ${m.migrated}개를 새 보관함으로 옮겼어요. 원래 기록도 그대로 남겨 뒀어요.`;}}),
   request,generate,tokenCounter,currentAnchor,resolveAnchor,appendToCurrentChat,createChatFromRecord,
   presetNames:()=>[],currentPresetName:()=>'',
   currentChatId:activeChatId,activeChatId,currentPersona:activePersonaId,

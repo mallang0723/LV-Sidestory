@@ -1291,6 +1291,22 @@ button#new-result-chat{display:none!important}
    do not hand it on to #reader: the page looks stuck (seen on Firefox for Android; reproducible in
    Chromium). Make #reader the only scroller there; the sticky action bar now sticks to #reader. */
 #reader .facet-plan-preview,#reader .facet-plan-preview .facet-plan-scroll{overflow:visible;overscroll-behavior:auto;height:auto;max-height:none}
+/* Host theme. Upstream paints its own palette (white/burgundy, or its dark set). While Side Story's light/dark
+   matches Lumiverse's current mode (the default: it follows the host until the user picks 밝게/어둡게 in
+   Side Story's settings on this device), the palette comes from the Lumiverse theme variables, so light, dark
+   and custom host themes carry over. A colour picked under 설정 › 테마 색 still wins (it is set inline).
+   Opaque host colours are used for surfaces because sheets and layers stack on top of each other. */
+.app[data-theme][data-host-theme=match]{
+ --ground:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
+ --surface:var(--lumiverse-bg-opaque,var(--lumiverse-bg-deep,#1c1826));
+ --paper:var(--lumiverse-card-bg-solid,var(--lumiverse-bg-opaque,#181422));
+ --ink:var(--lumiverse-text,#eeeaf5);--text:var(--lumiverse-text,#eeeaf5);
+ --muted:var(--lumiverse-text-muted,#aba5ba);--faint:var(--lumiverse-text-dim,#8a8499);
+ --line:var(--lumiverse-border-neutral,var(--lumiverse-border,rgba(128,128,128,.2)));
+ --accent:var(--lumiverse-primary,#9370db);--on-accent:var(--lumiverse-primary-contrast,#fff);
+ --accent-soft:var(--lumiverse-primary-010,rgba(147,112,219,.1));--accent-line:var(--lumiverse-primary-050,rgba(147,112,219,.5));
+ --danger:var(--lumiverse-danger,#ef4444);--box:var(--lumiverse-fill-medium,rgba(128,128,128,.25));--wash:var(--lumiverse-fill-subtle,rgba(128,128,128,.08));
+}
 `;
   const SideReplace = (() => {
     function clean(rows) {
@@ -8748,6 +8764,92 @@ ${item.inner}` : ""].filter(Boolean).join(`
       return o;
     };
   }
+  const LV_THEME_KEY = "sidestory-lumiverse-theme-choice";
+  let lvThemePicked = false;
+  try {
+    lvThemePicked = localStorage.getItem(LV_THEME_KEY) === "1";
+  } catch {}
+  function lvColor(name) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!v)
+      return null;
+    const probe = document.createElement("i");
+    probe.style.color = v;
+    probe.style.display = "none";
+    document.body.append(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    const m = c.match(/[\d.]+/g);
+    return m ? { css: c, r: +m[0], g: +m[1], b: +m[2], a: m[3] === undefined ? 1 : +m[3] } : null;
+  }
+  function lvHex(c, over) {
+    const mix = (k) => Math.round(over ? c[k] * c.a + over[k] * (1 - c.a) : c[k]);
+    return "#" + ["r", "g", "b"].map((k) => mix(k).toString(16).padStart(2, "0")).join("");
+  }
+  function lvHostMode() {
+    const bg = lvColor("--lumiverse-bg-opaque") || lvColor("--lumiverse-bg");
+    if (!bg)
+      return null;
+    const l = (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255;
+    return l < 0.5 ? "dark" : "light";
+  }
+  function lvSyncTheme() {
+    const mode = lvHostMode();
+    if (!mode) {
+      delete ui.dataset.hostTheme;
+      return false;
+    }
+    let changed = false;
+    if (!lvThemePicked && s.theme !== mode) {
+      s.theme = mode;
+      changed = true;
+    }
+    const match = s.theme === mode;
+    ui.dataset.hostTheme = match ? "match" : "off";
+    if (match) {
+      const bg = lvColor("--lumiverse-bg-opaque"), ink = lvColor("--lumiverse-text"), accent = lvColor("--lumiverse-primary"), line = lvColor("--lumiverse-border-neutral") || lvColor("--lumiverse-border");
+      if (bg && ink) {
+        const base = { r: bg.r, g: bg.g, b: bg.b };
+        PAGE_COLORS[mode] = { bg: lvHex(bg), ink: lvHex(ink, base), accent: accent ? lvHex(accent, base) : PAGE_COLORS[mode].accent, line: line ? lvHex(line, base) : PAGE_COLORS[mode].line };
+      }
+    }
+    return changed;
+  }
+  {
+    const upstreamApplyAccent = applyAccent;
+    applyAccent = function() {
+      if (lvSyncTheme())
+        ui.dataset.theme = s.theme;
+      upstreamApplyAccent();
+    };
+  }
+  root.addEventListener("click", (e) => {
+    if (e.target.closest?.("[data-theme-set]")) {
+      lvThemePicked = true;
+      try {
+        localStorage.setItem(LV_THEME_KEY, "1");
+      } catch {}
+    }
+  }, true);
+  {
+    const sig = () => {
+      const cs = getComputedStyle(document.documentElement);
+      return ["--lumiverse-bg-opaque", "--lumiverse-bg", "--lumiverse-text", "--lumiverse-primary", "--lumiverse-border"].map((k) => cs.getPropertyValue(k)).join("|");
+    };
+    let last = sig();
+    const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(() => {
+      const now = sig();
+      if (now === last)
+        return;
+      last = now;
+      if (alive && opened)
+        render();
+    }) : null;
+    observer?.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
+    stHost.onCleanup(() => observer?.disconnect());
+  }
+  lvSyncTheme();
+  ui.dataset.theme = s.theme;
 }
 
 // src/lumiverse/rpc.js
@@ -9171,7 +9273,9 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
     embedded: true,
     SillyTavern,
     indexedDB: createArchiveIDB({ rpc, real: realIndexedDB, onMigration: (m) => {
-      if (m?.migrated)
+      if (m?.error)
+        migrationNotice = `이전 버전(0.1.x)의 결과를 옮기지 못했어요. 다음에 열 때 다시 시도해요. (${m.error})`;
+      else if (m?.migrated && !m.already)
         migrationNotice = `이전 버전(0.1.x)의 결과 ${m.migrated}개를 새 보관함으로 옮겼어요. 원래 기록도 그대로 남겨 뒀어요.`;
     } }),
     request,

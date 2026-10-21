@@ -59,3 +59,23 @@ facetSources=function(kind){
  if(o.mode==='facet'&&Array.isArray(o.characterIds)&&o.characterIds.length>1){try{const id=lvExtractedCharacterId(facetSelectedSource('character'));if(id&&o.characterIds.includes(id)&&o.characterIds[0]!==id)o.characterIds=[id,...o.characterIds.filter(x=>x!==id)];}catch{}}
  return o;
 };}
+// 9. Follow the Lumiverse theme (see src/lumiverse/style.css). Light/dark follows the host until the user picks
+//    밝게/어둡게 on this device; while they match, colours (also of the reading page) come from the host.
+const LV_THEME_KEY='sidestory-lumiverse-theme-choice';
+let lvThemePicked=false;try{lvThemePicked=localStorage.getItem(LV_THEME_KEY)==='1';}catch{}
+function lvColor(name){const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();if(!v)return null;const probe=document.createElement('i');probe.style.color=v;probe.style.display='none';document.body.append(probe);const c=getComputedStyle(probe).color;probe.remove();const m=c.match(/[\d.]+/g);return m?{css:c,r:+m[0],g:+m[1],b:+m[2],a:m[3]===undefined?1:+m[3]}:null;}
+// The reading page only takes #hex colours: flatten translucent host colours onto the page background.
+function lvHex(c,over){const mix=k=>Math.round(over?c[k]*c.a+over[k]*(1-c.a):c[k]);return '#'+['r','g','b'].map(k=>mix(k).toString(16).padStart(2,'0')).join('');}
+function lvHostMode(){const bg=lvColor('--lumiverse-bg-opaque')||lvColor('--lumiverse-bg');if(!bg)return null;const l=(0.2126*bg.r+0.7152*bg.g+0.0722*bg.b)/255;return l<0.5?'dark':'light';}
+function lvSyncTheme(){
+ const mode=lvHostMode();if(!mode){delete ui.dataset.hostTheme;return false;}
+ let changed=false;if(!lvThemePicked&&s.theme!==mode){s.theme=mode;changed=true;}
+ const match=s.theme===mode;ui.dataset.hostTheme=match?'match':'off';
+ if(match){const bg=lvColor('--lumiverse-bg-opaque'),ink=lvColor('--lumiverse-text'),accent=lvColor('--lumiverse-primary'),line=lvColor('--lumiverse-border-neutral')||lvColor('--lumiverse-border');if(bg&&ink){const base={r:bg.r,g:bg.g,b:bg.b};PAGE_COLORS[mode]={bg:lvHex(bg),ink:lvHex(ink,base),accent:accent?lvHex(accent,base):PAGE_COLORS[mode].accent,line:line?lvHex(line,base):PAGE_COLORS[mode].line};}}
+ return changed;
+}
+{const upstreamApplyAccent=applyAccent;applyAccent=function(){if(lvSyncTheme())ui.dataset.theme=s.theme;upstreamApplyAccent();};}
+root.addEventListener('click',e=>{if(e.target.closest?.('[data-theme-set]')){lvThemePicked=true;try{localStorage.setItem(LV_THEME_KEY,'1');}catch{}}},true);
+{const sig=()=>{const cs=getComputedStyle(document.documentElement);return ['--lumiverse-bg-opaque','--lumiverse-bg','--lumiverse-text','--lumiverse-primary','--lumiverse-border'].map(k=>cs.getPropertyValue(k)).join('|');};let last=sig();
+ const observer=typeof MutationObserver!=='undefined'?new MutationObserver(()=>{const now=sig();if(now===last)return;last=now;if(alive&&opened)render();}):null;observer?.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme']});stHost.onCleanup(()=>observer?.disconnect());}
+lvSyncTheme();ui.dataset.theme=s.theme;

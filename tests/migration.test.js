@@ -83,3 +83,62 @@ test('records migrated by earlier 0.2.0 builds are re-attached once',async()=>{
  const writes=api.storage.get('archive/old-identity.json');await service.handle('u1','archiveList',{});
  assert.equal(api.storage.get('archive/old-identity.json'),writes,'runs once');
 });
+
+// ---- review C2: an ST import edited in 0.1.x must survive as its own record
+test('an ST import and its 0.1.x edit both survive, the edit attached to the import (review C2)',async()=>{
+ const upstream={id:'st-original',mode:'story',title:'original',content:'ST ORIGINAL',status:'complete',createdAt:1,folderId:'f1',tags:['t']};
+ const parent={id:'lv-import',mode:'story',content:'ST ORIGINAL',host:{chatId:'chat-1'},createdAt:2,requestId:null,upstreamArchive:{record:upstream}};
+ const edit={...structuredClone(parent),id:'lv-edited',parentId:'lv-import',content:'USER EDIT MUST SURVIVE',requestId:null,createdAt:3};
+ for(const order of [[parent,edit],[edit,parent]]){
+  const storage=Object.fromEntries(order.map(r=>['records/'+r.id+'.json',JSON.stringify(r)]));
+  const service=createService(createFakeSpindle({storage}));
+  const page=await service.handle('u1','archiveList',{});
+  assert.equal(page.migration.migrated,2);assert.equal(page.migration.skipped,0);
+  const original=page.records.find(r=>r.content==='ST ORIGINAL'),edited=page.records.find(r=>r.content==='USER EDIT MUST SURVIVE');
+  assert.equal(original.id,'st-original','the unedited import gets its upstream id back');
+  assert.equal(edited.id,'lv-edited');assert.equal(edited.action,'edit');assert.equal(edited.parentId,'st-original');
+  assert.equal(edited.folderId,'f1');assert.deepEqual(edited.tags,['t']);
+ }
+});
+
+test('the same ST record imported twice in 0.1.x stays two records',()=>{
+ const upstream={id:'st-x',mode:'story',title:'x',content:'SAME',status:'complete',createdAt:1};
+ const a={id:'lv-a',mode:'story',content:'SAME',host:{},createdAt:2,upstreamArchive:{record:upstream}},b={...a,id:'lv-b',createdAt:3};
+ const {records,skipped}=migrateRecords([a,b],[],{});
+ assert.equal(skipped,0);assert.deepEqual(records.map(r=>r.id).sort(),['lv-b','st-x']);
+});
+
+// ---- review C3: no completion marker after a failed pass
+test('a failed records/ listing is reported and retried, not recorded as an empty migration (review C3)',async()=>{
+ const api=createFakeSpindle({storage:{'records/old.json':JSON.stringify({id:'old',mode:'story',content:'SURVIVE',host:{chatId:'chat-1'}})}});
+ const list=api.userStorage.list;let fail=true;
+ api.userStorage.list=async(prefix,...rest)=>{if(prefix==='records/'&&fail){fail=false;throw Error('synthetic transient list error');}return list(prefix,...rest);};
+ const service=createService(api);
+ const first=await service.handle('u1','archiveList',{});
+ assert.match(first.migration.error,/synthetic/);assert.equal(first.records.length,0);assert.ok(!api.storage.has('migration-0.2.0.json'));
+ const second=await service.handle('u1','archiveList',{});
+ assert.equal(second.migration.migrated,1);assert.equal(second.records[0].content,'SURVIVE');assert.ok(api.storage.has('migration-0.2.0.json'));
+ const third=await service.handle('u1','archiveList',{});assert.equal(third.migration.already,true);
+});
+
+test('a write failure halfway leaves no marker and the next pass finishes without duplicates',async()=>{
+ const rows=['a','b','c'].map((id,i)=>({id:'old-'+id,mode:'story',content:'본문 '+id,host:{chatId:'chat-1'},createdAt:i}));
+ const api=createFakeSpindle({storage:Object.fromEntries(rows.map(r=>['records/'+r.id+'.json',JSON.stringify(r)]))});
+ const setJson=api.userStorage.setJson;let writes=0;
+ api.userStorage.setJson=async(p,v,o)=>{if(p.startsWith('archive/')&&++writes===2)throw Error('synthetic write error');return setJson(p,v,o);};
+ const service=createService(api);
+ assert.match((await service.handle('u1','archiveList',{})).migration.error,/synthetic write/);
+ assert.ok(!api.storage.has('migration-0.2.0.json'));
+ const page=await service.handle('u1','archiveList',{});
+ assert.equal(page.records.length,3);assert.equal(page.migration.migrated,2);assert.equal(page.migration.skipped,1);
+});
+
+test('the identity repair pass is retried when a lookup failed',async()=>{
+ const broken={id:'old-identity',mode:'facet',facetPhase:'plan',facetPlan:{...plan,subjects:[{...plan.subjects[0],kind:'user',name:'정수빈'}]},chatId:'chat-1',characterIds:['char-a'],settings:{facet:{target:'user'},personaIds:[]},migratedFrom:'lumiverse-0.1',content:'x',title:'t',createdAt:1};
+ const api=createFakeSpindle({storage:{'migration-0.2.0.json':'{}','archive/old-identity.json':JSON.stringify(broken)}});
+ const listPersonas=api.personas.list;let fail=true;api.personas.list=async(...a)=>{if(fail){fail=false;throw Error('busy');}return listPersonas(...a);};
+ const service=createService(api);
+ await service.handle('u1','archiveList',{});assert.ok(!api.storage.has('repair-identity-sources-1.json'));
+ const page=await service.handle('u1','archiveList',{});
+ assert.deepEqual(page.records[0].settings.personaIds,['persona:9a8b7c6d-3333-4e5f-8a9b-000000000003']);assert.ok(api.storage.has('repair-identity-sources-1.json'));
+});

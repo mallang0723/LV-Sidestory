@@ -114,6 +114,7 @@ export function createService(api,{now=()=>Date.now()}={}){
     const source=payload.history||payload.selectedLoreOnly?await api.chat.getMessages(chat.id):[];
     const quiet=fillNames(text(String(payload.quietPrompt||payload.messages?.map(m=>m.content).filter(Boolean).join('\n\n')||'')),who);
     const shaped=shapeHostPrompt({dryRun:dry,source,plan:payload.history||null,quietPrompt:quiet,auxiliaryTurns:(payload.auxiliaryTurns||[]).map(m=>({role:m.role,content:fillNames(m.content,who)})),selectedLoreOnly:!!payload.selectedLoreOnly});
+    if(shaped.blocked)throw Error(shaped.blocked);
     messages=shaped.messages;history=payload.history?shaped.report:null;
     const {stream:_s,max_tokens:_m,...rest}=dry.parameters&&typeof dry.parameters==='object'?dry.parameters:{};
     parameters={...rest,max_tokens:maxTokens};
@@ -148,41 +149,52 @@ export function createService(api,{now=()=>Date.now()}={}){
  const read=(u,p)=>api.userStorage.getJson(p,{userId:u,fallback:null});
  const write=(u,p,v)=>api.userStorage.setJson(p,v,{userId:u});
  async function archiveFiles(u){return (await api.userStorage.list('archive/',u)).filter(p=>p.endsWith('.json')).map(p=>p.startsWith('archive/')?p:'archive/'+p);}
- /** Characters per chat (group order, like upstream's record.characterIds) and the user's personas. */
+ /** Characters per chat (group order, like upstream's record.characterIds) and the user's personas. `complete`
+  * is false when a lookup failed, so a pass that depends on it is not marked done. */
  async function sourceContext(u,chatIds){
-  const byChat=new Map();
+  const byChat=new Map();let complete=true;
   for(const cid of new Set(chatIds.filter(x=>typeof x==='string'&&x))){
-   try{const chat=await api.chats.get(cid,u);const list=[];for(const id of characterIdsOf(chat)){const c=await api.characters.get(id,u).catch(()=>null);list.push({id,name:c?.name||''});}byChat.set(cid,list);}catch{byChat.set(cid,[]);}
+   try{const chat=await api.chats.get(cid,u);const list=[];for(const id of characterIdsOf(chat)){const c=await api.characters.get(id,u).catch(()=>{complete=false;return null;});list.push({id,name:c?.name||''});}byChat.set(cid,list);}catch{byChat.set(cid,[]);complete=false;}
   }
-  let personas=[];try{personas=(await allPages(o=>api.personas.list({...o,userId:u}))).map(p=>({id:p.id,name:p.name||''}));}catch{personas=[];}
-  return {chatCharacters:cid=>byChat.get(cid)||[],personas};
+  let personas=[];try{personas=(await allPages(o=>api.personas.list({...o,userId:u}))).map(p=>({id:p.id,name:p.name||''}));}catch{personas=[];complete=false;}
+  return {chatCharacters:cid=>byChat.get(cid)||[],personas,complete};
  }
  // 0.2.0 builds before this fix migrated identity extractions without the ids upstream looks them up by
- // (persona never, group chats under the greeting character). Re-attach them once.
+ // (persona never, group chats under the greeting character). Re-attach them once; the marker is written only
+ // after a pass in which every read and lookup succeeded, so a transient failure is retried next time.
  async function repairSources(u){
   if(await read(u,'repair-identity-sources-1.json'))return null;
-  const files=await archiveFiles(u),targets=[];
-  for(const p of files){const r=await read(u,p);if(r?.migratedFrom==='lumiverse-0.1'&&r.mode==='facet'&&r.facetPhase==='plan'&&r.facetPlan)targets.push({p,r});}
-  const context=await sourceContext(u,targets.map(x=>x.r.chatId));let fixed=0;
-  for(const {p,r} of targets){
-   const ids=identitySourceIds(r.facetPlan,{characters:context.chatCharacters(r.chatId),personas:context.personas});
-   const next={...r,settings:{...(r.settings||{})}};let changed=false;
-   if(ids.characterIds.length&&JSON.stringify(ids.characterIds)!==JSON.stringify(r.characterIds||[])){next.characterIds=ids.characterIds;changed=true;}
-   if(ids.personaIds.length&&!(r.settings?.personaIds||[]).length){next.settings.personaIds=ids.personaIds;changed=true;}
-   if(changed){await write(u,p,next);fixed++;}
-  }
-  const done={at:now(),checked:targets.length,fixed};await write(u,'repair-identity-sources-1.json',done);return done;
+  try{
+   const files=await archiveFiles(u),targets=[];
+   for(const p of files){const r=await read(u,p);if(r?.migratedFrom==='lumiverse-0.1'&&r.mode==='facet'&&r.facetPhase==='plan'&&r.facetPlan)targets.push({p,r});}
+   const context=await sourceContext(u,targets.map(x=>x.r.chatId));let fixed=0;
+   for(const {p,r} of targets){
+    const ids=identitySourceIds(r.facetPlan,{characters:context.chatCharacters(r.chatId),personas:context.personas});
+    const next={...r,settings:{...(r.settings||{})}};let changed=false;
+    if(ids.characterIds.length&&JSON.stringify(ids.characterIds)!==JSON.stringify(r.characterIds||[])){next.characterIds=ids.characterIds;changed=true;}
+    if(ids.personaIds.length&&!(r.settings?.personaIds||[]).length){next.settings.personaIds=ids.personaIds;changed=true;}
+    if(changed){await write(u,p,next);fixed++;}
+   }
+   const done={at:now(),checked:targets.length,fixed};
+   if(context.complete||!targets.length)await write(u,'repair-identity-sources-1.json',done);
+   return done;
+  }catch(e){return {error:String(e?.message||e),retry:true};}
  }
+ // 0.1.x results (records/) → upstream archive (archive/). The completion marker is written only after every
+ // old record was read and every new one written; a listing/read/write failure leaves no marker, reports the
+ // error, and the next open continues (already moved records are recognised by lvLegacy.id).
  async function migrate(u){
-  const marker=await read(u,'migration-0.2.0.json');if(marker)return marker;
-  let old=[];try{old=(await api.userStorage.list('records/',u)).filter(p=>/^[\w-]+\.json$/.test(p.replace(/^records\//,'')));}catch{old=[];}
-  const rows=[];for(const p of old){const r=await read(u,p.startsWith('records/')?p:'records/'+p);if(r)rows.push(r);}
-  const existing=new Set();for(const p of await archiveFiles(u)){const r=await read(u,p);if(r?.id)existing.add(r.id);}
-  const context=await sourceContext(u,rows.map(r=>r?.host?.chatId));
-  const result=migrateRecords(rows,existing,context);
-  for(const r of result.records)await write(u,fileOf(r.id),r);
-  const done={version:'0.2.0',at:now(),found:rows.length,migrated:result.records.length,skipped:result.skipped,failed:result.failed};
-  await write(u,'migration-0.2.0.json',done);return done;
+  const marker=await read(u,'migration-0.2.0.json');if(marker)return {...marker,already:true};
+  try{
+   const old=(await api.userStorage.list('records/',u)).filter(p=>/^[\w-]+\.json$/.test(p.replace(/^records\//,'')));
+   const rows=[];for(const p of old){const r=await read(u,p.startsWith('records/')?p:'records/'+p);if(r)rows.push(r);}
+   const existing=[];for(const p of await archiveFiles(u)){const r=await read(u,p);if(r?.id)existing.push({id:r.id,content:r.content,lvLegacy:r.lvLegacy});}
+   const context=await sourceContext(u,rows.map(r=>r?.host?.chatId));
+   const result=migrateRecords(rows,existing,context);
+   for(const r of result.records)await write(u,fileOf(r.id),r);
+   const done={version:'0.2.0',at:now(),found:rows.length,migrated:result.records.length,skipped:result.skipped,failed:result.failed};
+   await write(u,'migration-0.2.0.json',done);return done;
+  }catch(e){return {error:String(e?.message||e),retry:true};}
  }
  const PAGE_BYTES=2_000_000;
  async function archiveList(u,{cursor=0}={}){

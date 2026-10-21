@@ -2,46 +2,49 @@
 // src/lumiverse/assembly.js
 var textOf = (m) => typeof m?.content === "string" ? m.content : Array.isArray(m?.content) ? m.content.map((p) => typeof p?.text === "string" ? p.text : "").join("") : "";
 var norm = (s) => String(s ?? "").trim();
-function probe(content) {
-  const lines = String(content ?? "").split(`
-`).map((x) => x.trim()).filter((x) => x.length >= 12 && !/[<>\[\]{}|]/.test(x)).sort((a, b) => b.length - a.length);
-  return lines[0] ? lines[0].slice(0, 40) : "";
-}
+var clean = (s) => String(s ?? "").replace(/\r\n?/g, `
+`).replace(/[ \t]+/g, " ").replace(/\n{3,}/g, `
+
+`).trim();
 function eligibleHistory(source) {
-  return (Array.isArray(source) ? source : []).filter((m) => m && m.extra?.hidden !== true && typeof m.content === "string").slice().sort((a, b) => (a.index_in_chat ?? 0) - (b.index_in_chat ?? 0));
+  return (Array.isArray(source) ? source : []).filter((m) => m && m.extra?.hidden !== true && m.role !== "system" && typeof m.content === "string").slice().sort((a, b) => (a.index_in_chat ?? 0) - (b.index_in_chat ?? 0));
+}
+function historyTurns(source) {
+  const turns = [];
+  for (const m of eligibleHistory(source)) {
+    const last = turns.at(-1);
+    if (last && m.is_user && last.is_user)
+      turns[turns.length - 1] = { ...last, index_in_chat: m.index_in_chat, content: last.content + `
+
+` + m.content, count: last.count + 1, ids: [...last.ids, m.id] };
+    else
+      turns.push({ ...m, count: 1, ids: [m.id] });
+  }
+  return turns;
+}
+function sameTurn(message, turn) {
+  const a = clean(textOf(message)), b = clean(turn?.content);
+  if (!b)
+    return false;
+  if (a === b)
+    return true;
+  const at = a.length - b.length;
+  return at > 0 && a.endsWith(b) && /^[^\n]{1,80}:\s*$/.test(a.slice(0, at));
 }
 function locateHistory(dryRun, source) {
-  const messages = Array.isArray(dryRun?.messages) ? dryRun.messages : [], breakdown = Array.isArray(dryRun?.breakdown) ? dryRun.breakdown : [];
-  const entry = breakdown.find((b) => b?.type === "chat_history");
-  const result = { indices: [], rows: [], expected: 0, verified: 0, checked: 0, reliable: false };
-  if (!entry || !(entry.messageCount > 0) || !Number.isInteger(entry.firstMessageIndex))
-    return { ...result, reliable: true };
-  result.expected = entry.messageCount;
-  const injected = new Set(breakdown.filter((b) => b && b.type !== "chat_history" && typeof b.content === "string" && norm(b.content)).map((b) => norm(b.content)));
-  for (let i = entry.firstMessageIndex;i < messages.length && result.indices.length < entry.messageCount; i++)
-    if (!injected.has(norm(textOf(messages[i]))))
-      result.indices.push(i);
-  const eligible = [];
-  for (const m of eligibleHistory(source)) {
-    const last = eligible.at(-1);
-    if (last && m.is_user && last.is_user)
-      eligible[eligible.length - 1] = { ...last, index_in_chat: m.index_in_chat, content: last.content + `
-` + m.content };
-    else
-      eligible.push(m);
-  }
-  result.rows = result.indices.length === entry.messageCount ? eligible.slice(Math.max(0, eligible.length - entry.messageCount)) : [];
-  if (result.rows.length === result.indices.length)
-    result.indices.forEach((at, k) => {
-      const p = probe(result.rows[k]?.content);
-      if (!p)
-        return;
-      result.checked++;
-      if (textOf(messages[at]).includes(p))
-        result.verified++;
-    });
-  result.reliable = result.indices.length === entry.messageCount && result.rows.length === entry.messageCount && (result.checked === 0 || result.verified * 2 >= result.checked);
-  return result;
+  const messages = Array.isArray(dryRun?.messages) ? dryRun.messages : [], turns = historyTurns(source);
+  const clip = dryRun?.contextClipStats, dropped = clip?.enabled ? Math.max(0, Number(clip.messagesDropped) || 0) : 0;
+  const total = turns.reduce((n, t) => n + t.count, 0), expectedMessages = Math.max(0, total - dropped);
+  const pairs = [];
+  let j = turns.length - 1;
+  for (let i = messages.length - 1;i >= 0 && j >= 0; i--)
+    if (sameTurn(messages[i], turns[j])) {
+      pairs.unshift({ at: i, row: turns[j] });
+      j--;
+    }
+  const matchedMessages = pairs.reduce((n, p) => n + p.row.count, 0);
+  const reliable = turns.length === 0 || pairs.length > 0 && pairs.at(-1).row === turns.at(-1) && matchedMessages === expectedMessages || expectedMessages === 0 && pairs.length === 0;
+  return { indices: pairs.map((p) => p.at), rows: pairs.map((p) => p.row), expected: expectedMessages, matched: matchedMessages, dropped, reliable };
 }
 function anchorIndex(anchor, source) {
   if (!anchor)
@@ -50,19 +53,20 @@ function anchorIndex(anchor, source) {
   const hit = anchor.sendDate && rows.find((m) => m?.id === anchor.sendDate);
   return hit && Number.isInteger(hit.index_in_chat) ? hit.index_in_chat : -1;
 }
-function stripWorldInfo(messages, breakdown, removed) {
+function stripWorldInfo(messages, breakdown, removed, protect = new Set) {
   let stripped = 0, unmatched = 0;
   for (const b of Array.isArray(breakdown) ? breakdown : []) {
     if (b?.type !== "world_info" || typeof b.content !== "string" || !norm(b.content))
       continue;
-    const want = norm(b.content);
-    let at = messages.findIndex((m, i) => !removed.has(i) && norm(textOf(m)) === want);
-    if (at >= 0) {
+    const want = norm(b.content), free = (i) => !removed.has(i) && !protect.has(i);
+    const exact = messages.map((m, i) => i).filter((i) => free(i) && norm(textOf(messages[i])) === want);
+    let at = exact.find((i) => b.role && messages[i].role === b.role) ?? exact[0];
+    if (at !== undefined) {
       removed.add(at);
       stripped++;
       continue;
     }
-    at = messages.findIndex((m, i) => !removed.has(i) && typeof m.content === "string" && m.content.includes(b.content));
+    at = messages.findIndex((m, i) => free(i) && typeof m.content === "string" && m.content.includes(b.content));
     if (at >= 0) {
       messages[at] = { ...messages[at], content: messages[at].content.replace(b.content, "").replace(/\n{3,}/g, `
 
@@ -74,25 +78,28 @@ function stripWorldInfo(messages, breakdown, removed) {
   }
   return { stripped, unmatched };
 }
+var HISTORY_BLOCKED = "\uB8E8\uBBF8\uBC84\uC2A4\uAC00 \uC870\uB9BD\uD55C \uD504\uB86C\uD504\uD2B8\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \uC815\uD655\uD788 \uAC00\uB824\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694(\uC815\uADDC\uC2DD\xB7\uB9E4\uD06C\uB85C\uB85C \uBC14\uB010 \uBA54\uC2DC\uC9C0, \uB2E4\uB978 \uBE14\uB85D\uACFC \uD569\uCCD0\uC9C4 \uBA54\uC2DC\uC9C0 \uB4F1). \u201C\uBCF8\uD3B8 \uB300\uD654 \uC548 \uB123\uC74C/\uCD5C\uADFC N\uAC1C\u201D\uB97C \uC9C0\uD0AC \uC218 \uC5C6\uC5B4\uC11C \uBCF4\uB0B4\uC9C0 \uC54A\uC558\uC5B4\uC694. \uCC38\uACE0 \uC790\uB8CC\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \u201C\uC804\uCCB4\u201D\uB85C \uB450\uAC70\uB098, \uC124\uC815 \u203A API \uC5F0\uACB0\uC5D0\uC11C \uB2E4\uB978 \uC5F0\uACB0 \uD504\uB85C\uD544(Side Story\uAC00 \uC790\uB8CC\uB97C \uC9C1\uC811 \uC870\uB9BD)\uC744 \uACE8\uB77C \uC8FC\uC138\uC694.";
 function shapeHostPrompt({ dryRun, source = [], plan = null, quietPrompt = "", auxiliaryTurns = [], selectedLoreOnly = false }) {
   const messages = (Array.isArray(dryRun?.messages) ? dryRun.messages : []).map((m) => ({ role: m.role, content: m.content, ...m.name ? { name: m.name } : {} }));
   const breakdown = Array.isArray(dryRun?.breakdown) ? dryRun.breakdown : [];
   const history = locateHistory(dryRun, source), removed = new Set;
   const report = { before: history.indices.length, after: history.indices.length, anchor: null };
-  const meta = { host: "lumiverse", model: dryRun?.model ?? null, provider: dryRun?.provider ?? null, historyRows: history.indices.length, historyExpected: history.expected, historyVerified: `${history.verified}/${history.checked}`, historyMapping: history.reliable ? "matched" : "approximate" };
-  let kept = history.indices.slice();
+  const meta = { host: "lumiverse", model: dryRun?.model ?? null, provider: dryRun?.provider ?? null, historyRows: history.indices.length, historyMessages: `${history.matched}/${history.expected}`, historyMapping: history.reliable ? "matched" : "unverified" };
+  let kept = history.indices.slice(), blocked = null;
+  const trims = !!plan && (plan.exclude || Number.isInteger(plan.limit) && plan.limit >= 0);
   if (plan && !history.reliable) {
     report.skipped = true;
     if (plan.anchor)
       report.anchor = "missing";
-    meta.historyMapping = "unreliable";
+    if (trims && (plan.exclude || history.expected > plan.limit))
+      blocked = HISTORY_BLOCKED;
   } else if (plan) {
     if (plan.exclude)
       kept = [];
     else {
       if (plan.anchor) {
         const cut = anchorIndex(plan.anchor, source);
-        if (cut >= 0 && history.reliable) {
+        if (cut >= 0) {
           kept = kept.filter((_, k) => history.rows[k].index_in_chat <= cut);
           report.anchor = "applied";
         } else
@@ -108,9 +115,9 @@ function shapeHostPrompt({ dryRun, source = [], plan = null, quietPrompt = "", a
     report.after = kept.length;
   }
   if (selectedLoreOnly)
-    Object.assign(meta, { worldInfo: stripWorldInfo(messages, breakdown, removed) });
+    Object.assign(meta, { worldInfo: stripWorldInfo(messages, breakdown, removed, new Set(history.reliable ? history.indices : [])) });
   const append = Array.isArray(plan?.append) ? plan.append.filter((m) => m && typeof m.content === "string" && m.content.trim()).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })) : [];
-  const after = kept.length ? kept.at(-1) : history.indices.length ? history.indices[0] - 1 : messages.length - 1;
+  const after = !history.reliable || !history.indices.length ? messages.length - 1 : kept.length ? kept.at(-1) : history.indices[0] - 1;
   const out = [];
   messages.forEach((m, i) => {
     if (!removed.has(i))
@@ -127,7 +134,7 @@ function shapeHostPrompt({ dryRun, source = [], plan = null, quietPrompt = "", a
   for (const row of Array.isArray(auxiliaryTurns) ? auxiliaryTurns : [])
     if (row && typeof row.content === "string")
       out.push({ role: row.role === "assistant" ? "assistant" : "user", content: row.content });
-  return { messages: out, report, meta };
+  return { messages: out, report, meta, ...blocked ? { blocked } : {} };
 }
 function fillNames(text, { char = "", user = "" } = {}) {
   return String(text ?? "").replace(/\{\{char\}\}/gi, () => char || "{{char}}").replace(/\{\{user\}\}/gi, () => user || "{{user}}");
@@ -216,7 +223,24 @@ function migrateRecord(old, context = {}) {
   const chatId = str(old.host?.chatId, 200);
   const upstream = old.upstreamArchive?.record;
   if (upstream && typeof upstream === "object" && typeof upstream.id === "string" && UPSTREAM_MODES.has(upstream.mode) && typeof upstream.content === "string") {
-    return { ...structuredClone(upstream), chatId: chatId || "", favorite: !!(upstream.favorite || old.favorite), migratedFrom: "lumiverse-0.1", lvLegacy: { id: old.id, host: old.host || {}, needsRemap: !!old.needsRemap, stChatId: str(upstream.chatId, 300) } };
+    const edited = !!old.parentId && old.requestId == null || old.content !== upstream.content;
+    const r = {
+      ...structuredClone(upstream),
+      id: old.id,
+      content: old.content,
+      chatId: chatId || "",
+      favorite: !!(upstream.favorite || old.favorite),
+      migratedFrom: "lumiverse-0.1",
+      lvLegacy: { id: old.id, host: old.host || {}, needsRemap: !!old.needsRemap, stChatId: str(upstream.chatId, 300), upstreamId: upstream.id, parentId: old.parentId ?? null }
+    };
+    if (edited) {
+      Object.assign(r, { action: "edit", parentId: old.parentId || null, createdAt: Number.isFinite(old.createdAt) ? old.createdAt : Date.now(), favorite: old.favorite === true });
+      delete r.translationView;
+      delete r.translationRecovery;
+      delete r.recap;
+    } else
+      r.preferredId = upstream.id;
+    return r;
   }
   const mode = MODE[old.mode] || "story";
   const createdAt = Number.isFinite(old.createdAt) ? old.createdAt : Date.now();
@@ -274,10 +298,16 @@ function migrateRecord(old, context = {}) {
     record.translationView = { ...old.translationView };
   return record;
 }
-function migrateRecords(oldRows, existingIds = new Set, context = {}) {
-  const out = [], seen = new Set(existingIds);
+function migrateRecords(oldRows, existing = [], context = {}) {
+  const existingRows = [...existing instanceof Set ? [...existing].map((id) => ({ id })) : existing || []];
+  const taken = new Set(existingRows.map((r) => r.id)), done = new Set(existingRows.map((r) => r.lvLegacy?.id).filter(Boolean));
+  const out = [], idMap = new Map;
   let skipped = 0, failed = 0;
   for (const old of Array.isArray(oldRows) ? oldRows : []) {
+    if (old?.id && done.has(old.id)) {
+      skipped++;
+      continue;
+    }
     let r = null;
     try {
       r = migrateRecord(old, context);
@@ -288,19 +318,41 @@ function migrateRecords(oldRows, existingIds = new Set, context = {}) {
       failed++;
       continue;
     }
-    if (seen.has(r.id)) {
-      skipped++;
-      continue;
+    const preferred = r.preferredId;
+    delete r.preferredId;
+    if (preferred && !taken.has(preferred))
+      r.id = preferred;
+    if (taken.has(r.id)) {
+      const twin = existingRows.find((x) => x.id === r.id);
+      if (twin && twin.content === r.content && !twin.lvLegacy) {
+        skipped++;
+        idMap.set(old.id, r.id);
+        continue;
+      }
+      if (old.id !== r.id && !taken.has(old.id))
+        r.id = old.id;
+      else {
+        skipped++;
+        idMap.set(old.id, r.id);
+        continue;
+      }
     }
-    seen.add(r.id);
+    taken.add(r.id);
+    idMap.set(old.id, r.id);
     out.push(r);
   }
-  const ids = new Set([...seen]);
-  for (const r of out)
-    if (r.parentId && !ids.has(r.parentId)) {
+  for (const r of out) {
+    if (!r.parentId)
+      continue;
+    const mapped = idMap.get(r.parentId) || (taken.has(r.parentId) ? r.parentId : null);
+    if (mapped && mapped !== r.id)
+      r.parentId = mapped;
+    else {
       r.parentId = null;
-      r.action = "new";
+      if (r.action === "edit")
+        r.action = "new";
     }
+  }
   return { records: out, skipped, failed };
 }
 
@@ -506,6 +558,8 @@ function createService(api, { now = () => Date.now() } = {}) {
 
 `) || "")), who);
         const shaped = shapeHostPrompt({ dryRun: dry, source, plan: payload.history || null, quietPrompt: quiet, auxiliaryTurns: (payload.auxiliaryTurns || []).map((m) => ({ role: m.role, content: fillNames(m.content, who) })), selectedLoreOnly: !!payload.selectedLoreOnly });
+        if (shaped.blocked)
+          throw Error(shaped.blocked);
         messages2 = shaped.messages;
         history = payload.history ? shaped.report : null;
         const { stream: _s, max_tokens: _m, ...rest } = dry.parameters && typeof dry.parameters === "object" ? dry.parameters : {};
@@ -573,17 +627,22 @@ function createService(api, { now = () => Date.now() } = {}) {
   }
   async function sourceContext(u, chatIds) {
     const byChat = new Map;
+    let complete = true;
     for (const cid of new Set(chatIds.filter((x) => typeof x === "string" && x))) {
       try {
         const chat = await api.chats.get(cid, u);
         const list = [];
         for (const id2 of characterIdsOf(chat)) {
-          const c = await api.characters.get(id2, u).catch(() => null);
+          const c = await api.characters.get(id2, u).catch(() => {
+            complete = false;
+            return null;
+          });
           list.push({ id: id2, name: c?.name || "" });
         }
         byChat.set(cid, list);
       } catch {
         byChat.set(cid, []);
+        complete = false;
       }
     }
     let personas2 = [];
@@ -591,70 +650,75 @@ function createService(api, { now = () => Date.now() } = {}) {
       personas2 = (await allPages((o) => api.personas.list({ ...o, userId: u }))).map((p) => ({ id: p.id, name: p.name || "" }));
     } catch {
       personas2 = [];
+      complete = false;
     }
-    return { chatCharacters: (cid) => byChat.get(cid) || [], personas: personas2 };
+    return { chatCharacters: (cid) => byChat.get(cid) || [], personas: personas2, complete };
   }
   async function repairSources(u) {
     if (await read(u, "repair-identity-sources-1.json"))
       return null;
-    const files = await archiveFiles(u), targets = [];
-    for (const p of files) {
-      const r = await read(u, p);
-      if (r?.migratedFrom === "lumiverse-0.1" && r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan)
-        targets.push({ p, r });
+    try {
+      const files = await archiveFiles(u), targets = [];
+      for (const p of files) {
+        const r = await read(u, p);
+        if (r?.migratedFrom === "lumiverse-0.1" && r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan)
+          targets.push({ p, r });
+      }
+      const context = await sourceContext(u, targets.map((x) => x.r.chatId));
+      let fixed = 0;
+      for (const { p, r } of targets) {
+        const ids = identitySourceIds(r.facetPlan, { characters: context.chatCharacters(r.chatId), personas: context.personas });
+        const next = { ...r, settings: { ...r.settings || {} } };
+        let changed = false;
+        if (ids.characterIds.length && JSON.stringify(ids.characterIds) !== JSON.stringify(r.characterIds || [])) {
+          next.characterIds = ids.characterIds;
+          changed = true;
+        }
+        if (ids.personaIds.length && !(r.settings?.personaIds || []).length) {
+          next.settings.personaIds = ids.personaIds;
+          changed = true;
+        }
+        if (changed) {
+          await write(u, p, next);
+          fixed++;
+        }
+      }
+      const done = { at: now(), checked: targets.length, fixed };
+      if (context.complete || !targets.length)
+        await write(u, "repair-identity-sources-1.json", done);
+      return done;
+    } catch (e) {
+      return { error: String(e?.message || e), retry: true };
     }
-    const context = await sourceContext(u, targets.map((x) => x.r.chatId));
-    let fixed = 0;
-    for (const { p, r } of targets) {
-      const ids = identitySourceIds(r.facetPlan, { characters: context.chatCharacters(r.chatId), personas: context.personas });
-      const next = { ...r, settings: { ...r.settings || {} } };
-      let changed = false;
-      if (ids.characterIds.length && JSON.stringify(ids.characterIds) !== JSON.stringify(r.characterIds || [])) {
-        next.characterIds = ids.characterIds;
-        changed = true;
-      }
-      if (ids.personaIds.length && !(r.settings?.personaIds || []).length) {
-        next.settings.personaIds = ids.personaIds;
-        changed = true;
-      }
-      if (changed) {
-        await write(u, p, next);
-        fixed++;
-      }
-    }
-    const done = { at: now(), checked: targets.length, fixed };
-    await write(u, "repair-identity-sources-1.json", done);
-    return done;
   }
   async function migrate(u) {
     const marker = await read(u, "migration-0.2.0.json");
     if (marker)
-      return marker;
-    let old = [];
+      return { ...marker, already: true };
     try {
-      old = (await api.userStorage.list("records/", u)).filter((p) => /^[\w-]+\.json$/.test(p.replace(/^records\//, "")));
-    } catch {
-      old = [];
+      const old = (await api.userStorage.list("records/", u)).filter((p) => /^[\w-]+\.json$/.test(p.replace(/^records\//, "")));
+      const rows = [];
+      for (const p of old) {
+        const r = await read(u, p.startsWith("records/") ? p : "records/" + p);
+        if (r)
+          rows.push(r);
+      }
+      const existing = [];
+      for (const p of await archiveFiles(u)) {
+        const r = await read(u, p);
+        if (r?.id)
+          existing.push({ id: r.id, content: r.content, lvLegacy: r.lvLegacy });
+      }
+      const context = await sourceContext(u, rows.map((r) => r?.host?.chatId));
+      const result = migrateRecords(rows, existing, context);
+      for (const r of result.records)
+        await write(u, fileOf(r.id), r);
+      const done = { version: "0.2.0", at: now(), found: rows.length, migrated: result.records.length, skipped: result.skipped, failed: result.failed };
+      await write(u, "migration-0.2.0.json", done);
+      return done;
+    } catch (e) {
+      return { error: String(e?.message || e), retry: true };
     }
-    const rows = [];
-    for (const p of old) {
-      const r = await read(u, p.startsWith("records/") ? p : "records/" + p);
-      if (r)
-        rows.push(r);
-    }
-    const existing = new Set;
-    for (const p of await archiveFiles(u)) {
-      const r = await read(u, p);
-      if (r?.id)
-        existing.add(r.id);
-    }
-    const context = await sourceContext(u, rows.map((r) => r?.host?.chatId));
-    const result = migrateRecords(rows, existing, context);
-    for (const r of result.records)
-      await write(u, fileOf(r.id), r);
-    const done = { version: "0.2.0", at: now(), found: rows.length, migrated: result.records.length, skipped: result.skipped, failed: result.failed };
-    await write(u, "migration-0.2.0.json", done);
-    return done;
   }
   const PAGE_BYTES = 2000000;
   async function archiveList(u, { cursor = 0 } = {}) {

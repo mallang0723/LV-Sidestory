@@ -14,12 +14,14 @@ export function createFakeSpindle(seed={}){
  const connections=seed.connections||[{id:'conn-1',name:'메인 연결',provider:'openai',api_url:'',model:'model-main',preset_id:null,is_default:true,has_api_key:true,metadata:{}},{id:'conn-2',name:'번역 연결',provider:'anthropic',api_url:'',model:'model-two',preset_id:null,is_default:false,has_api_key:true,metadata:{}}];
  const storage=new Map(Object.entries(seed.storage||{}));
  const frontendHandlers=new Set();const sent=[];
+ // Shaped like Lumiverse 1.2.5: messages are role/content only, and the breakdown has every block except
+ // chat_history (generate.service.ts omitChatHistoryBreakdownEntries). Consecutive user turns are merged.
  const dryRun=seed.dryRun||(input=>{
-  const hist=(messages.get(input.chatId)||[]).filter(m=>m.extra?.hidden!==true);
+  const hist=[];for(const m of (messages.get(input.chatId)||[]).filter(m=>m.extra?.hidden!==true)){const last=hist.at(-1);if(last&&m.is_user&&last.role==='user')last.content+='\n\n'+m.content;else hist.push({role:m.is_user?'user':'assistant',content:m.content});}
   const msgs=[{role:'system',content:'프리셋 시스템 지시'},{role:'system',content:'세계관 항목: 폐허의 도시'}];
-  const first=msgs.length;hist.forEach((m,i)=>{msgs.push({role:m.is_user?'user':'assistant',content:m.content});if(i===0)msgs.push({role:'system',content:'작가 노트: 긴장감'});});
+  hist.forEach((m,i)=>{msgs.push(m);if(i===0)msgs.push({role:'system',content:'작가 노트: 긴장감'});});
   msgs.push({role:'system',content:'마지막 지시'});
-  return {messages:msgs,breakdown:[{type:'block',name:'Main',content:'프리셋 시스템 지시'},{type:'world_info',name:'WI Before',content:'세계관 항목: 폐허의 도시'},{type:'chat_history',name:'Chat History',messageCount:hist.length,firstMessageIndex:first},{type:'authors_note',name:"Author's Note",content:'작가 노트: 긴장감'},{type:'block',name:'Post',content:'마지막 지시'}],parameters:{temperature:0.8,max_tokens:300,stream:true},model:'model-main',provider:'openai'};
+  return {messages:msgs,breakdown:[{type:'block',name:'Main',content:'프리셋 시스템 지시'},{type:'world_info',name:'WI Before',role:'system',content:'세계관 항목: 폐허의 도시'},{type:'authors_note',name:"Author's Note",content:'작가 노트: 긴장감'},{type:'block',name:'Post',content:'마지막 지시'}],parameters:{temperature:0.8,max_tokens:300,stream:true},model:'model-main',provider:'openai',contextClipStats:{enabled:true,messagesDropped:0}};
  });
  const api={
   calls,sent,storage,messages,
