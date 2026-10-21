@@ -1,81 +1,11 @@
-import {MODES,segments,inspectDialogue,displayText} from './core.js';
-import {staticHTML,translatedHTML,exportHTML,replaceDisplay,disposeWorkers,excerptPNG,download} from './presentation.js';
-import {createWorkspace} from './workspace.js';
+import {runSideStory} from './generated/side-story-app.js';
+import {createRpc} from './lumiverse/rpc.js';
+import {createLumiverseHost} from './lumiverse/host.js';
+// Spindle frontend: one drawer tab that hosts the upstream Side Story app (see src/lumiverse/host.js).
 export function setup(ctx){
- const tab=ctx.ui.registerDrawerTab({id:'side_story',title:'Side Story (사이드 스토리)',shortName:'Side',description:'루미버스용 · 비공식 (Unofficial, for Lumiverse)'});
- const root=tab.root;const ui=createWorkspace(root);
- let translationPreview=null;let disposed=false,epoch=0,preview=null,record=null,frame=null,background=null;const pending=new Map();
- const el=(tag,label,parent=ui.hidden)=>{const e=document.createElement(tag);if(label)e.textContent=label;parent.append(e);return e;};
- const status=ui.status;
- const field=(label,tag='input')=>{const l=el('label','',ui.fieldHost(label));l.className='ss-field';el('span',label==='요청'?'이번에는 무엇을 만들까요?':label,l);const e=el(tag,'',l);e.setAttribute('aria-label',label);return e;};
- const mode=field('작업','select');for(const [key,label] of Object.entries(MODES)){const o=el('option',label,mode);o.value=key;}
- const connection=field('연결','select');const presetSelect=field('프리셋','select');const noPreset=el('option','없음',presetSelect);noPreset.value='';el('small','classic 엔진 프리셋의 켜진 일반 블록만 지원합니다. 봉인·append 블록과 호스트 자료 매크로가 든 블록은 빠지며(목록에 부분 지원 또는 적용 안 됨으로 표시), 임베딩을 켰다면 최근 대화가 임베딩 공급자로 갈 수 있습니다. 미리보기의 주의 사항(notices)을 확인하세요.',ui.fieldHost('프리셋')).className='ss-hint';const world=field('선택 World Book 엔트리 ID (쉼표 구분)');
- const book=field('World Book 선택','select'),bookRows=el('div','',ui.bookRows);let bookOffset=0,entryOffset=0;const chosenBooks=new Set();
- // Summary first: the Lumiverse summary is the default context; raw dialogue is optional and chosen by numbers.
- const loomSummary=field('루미버스 요약 넣기');loomSummary.type='checkbox';loomSummary.checked=true;
- const loomHint=el('small','이 채팅에는 루미버스 요약이 없습니다. 아래 ‘직접 요약’에 줄거리를 적어 넣을 수 있어요.',ui.fieldHost('루미버스 요약 넣기'));loomHint.className='ss-hint';loomHint.dataset.ui='loom-hint';loomHint.hidden=true;
- const summary=field('직접 요약','textarea');
- const character=field('캐릭터 포함');character.type='checkbox';character.checked=true;const persona=field('페르소나 포함');persona.type='checkbox';
- const rawToggle=field('원문 일부 넣기');rawToggle.type='checkbox';let rawMode='recent',rawCount=null,chatGen=0;
- const numeric=e=>{e.type='text';e.inputMode='numeric';e.setAttribute('inputmode','numeric');e.pattern='[0-9]*';e.autocomplete='off';return e;};
- const rawButtons=[['recent','최근 N개'],['range','번호 범위']].map(([key,label])=>{const b=el('button',label,ui.raw.modes);b.type='button';b.dataset.rawMode=key;b.onclick=()=>{rawMode=key;syncRaw();invalidate();};return b;});
- const recentCount=numeric(field('최근 대화 수')),rangeStart=numeric(field('시작 번호')),rangeEnd=numeric(field('끝 번호'));
- const rawSelection=()=>rawToggle.checked?(rawMode==='recent'?{mode:'recent',count:recentCount.value}:{mode:'range',start:rangeStart.value,end:rangeEnd.value}):null;
- function syncRaw(){
-  ui.raw.panel.hidden=!rawToggle.checked;ui.raw.recent.hidden=rawMode!=='recent';ui.raw.range.hidden=rawMode!=='range';for(const b of rawButtons)b.setAttribute('aria-pressed',String(b.dataset.rawMode===rawMode));
-  if(!rawToggle.checked){ui.raw.summary.textContent='';return;}
-  if(!rawCount){ui.raw.summary.textContent='대화 수를 확인하는 중…';return;}
-  const {total,hidden}=rawCount;const head=total?`전체 ${total}개 (숨김·시스템 ${hidden}개는 빠짐) · 번호는 채팅의 #0–#${total-1}`:'이 채팅에는 대화가 없습니다.';
-  const c=inspectDialogue(rawSelection(),{total});ui.raw.summary.textContent=`${head}\n${c.error?'⚠ '+c.error:`넣을 원문: ${c.label} · 예산이 모자라면 오래된 대화부터 뺍니다.`}`;
- }
- const loadCount=async()=>{const gen=chatGen;ui.raw.summary.textContent='대화 수를 확인하는 중…';try{const c=await rpc('messageCount',{},{epochBound:false});if(disposed||gen!==chatGen||!rawToggle.checked)return;rawCount=c;const usable=Math.max(1,c.total-c.hidden);if(!recentCount.value)recentCount.value=String(Math.min(20,usable));if(!rangeStart.value&&!rangeEnd.value){rangeStart.value=String(Math.max(0,c.total-20));rangeEnd.value=String(Math.max(0,c.total-1));}syncRaw();}catch(e){if(!disposed&&gen===chatGen)ui.raw.summary.textContent=`대화 수를 확인하지 못했습니다: ${e.message}`;}};
- rawToggle.addEventListener('change',()=>{if(rawToggle.checked){syncRaw();if(!rawCount)loadCount();}else{rawCount=null;syncRaw();}});
- for(const e of [recentCount,rangeStart,rangeEnd])e.addEventListener('input',syncRaw);
- const identity=field('승인한 핵심정보','select'),request=field('요청','textarea'),budget=field('입력 토큰 예산');budget.type='number';budget.value='8000';
- const initialConnection=el('option','자료를 불러와 연결을 선택하세요.',connection);initialConnection.value='';
- const prompt=el('pre','',ui.prompt);prompt.dataset.testid='prompt';
- const identityView=el('pre','',ui.identityView);
- const output=field('결과 / 편집 초안','textarea');output.rows=12;const htmlRoot=ui.html;
- const rpc=(op,args={},{epochBound=true}={})=>new Promise((resolve,reject)=>{const id=crypto.randomUUID();const issuedEpoch=epochBound?epoch:null;const timer=setTimeout(()=>{pending.delete(id);reject(Error('응답 시간 초과'));},120000);pending.set(id,{resolve,reject,timer,issuedEpoch});ctx.sendToBackend({id,op,args});});
- const unsub=ctx.onBackendMessage(m=>{const p=pending.get(m?.id);if(!p)return;clearTimeout(p.timer);pending.delete(m.id);disposed||(p.issuedEpoch!==null&&p.issuedEpoch!==epoch)?p.reject(Error('stale result')):m.error?p.reject(Error(m.error)):p.resolve(m.result);});
- const actions=new Map();
- const action=(label,fn)=>{const display={'보관함 / 인덱스 복구':'새로고침','편집을 자식 결과로 저장':'수정본을 새 결과로 저장','현재 채팅으로 ID 재매핑 확인':'가져온 결과를 현재 채팅에 연결'};const b=el('button',display[label]||label,ui.actionHost(label));b.type='button';b.dataset.action=label;actions.set(label,b);b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){if(!disposed&&e.message!=='stale result')status.textContent=e.message;}finally{b.disabled=false;}};return b;};
- const invalidate=()=>{epoch++;translationPreview=null;preview=null;run.disabled=true;ui.invalidatePreview();prompt.textContent='입력이 변경되었습니다. 다시 미리보세요.';};
- for(const e of [mode,connection,presetSelect,loomSummary,rawToggle,recentCount,rangeStart,rangeEnd,world,character,persona,summary,identity,request,budget])e.addEventListener('input',invalidate);
- const eventOff=[ctx.events.on('CHAT_SWITCHED',()=>{invalidate();chatGen++;rawToggle.checked=false;rawCount=null;recentCount.value='';rangeStart.value='';rangeEnd.value='';syncRaw();loomHint.hidden=true;record=null;output.value='';world.value='';chosenBooks.clear();bookRows.replaceChildren();ui.clearResult();frame?.destroy();frame=null;}),ctx.events.on('PERMISSION_CHANGED',()=>invalidate())];
- const show=r=>{translationPreview=null;record=r;identityView.textContent=r.mode==='identity'?JSON.stringify({approved:!!r.identityApproved,facetPlan:r.facetPlan},null,2):'';const view=displayText(r);output.value=r.mode==='identity'?r.content:view;ui.showResult(r,view);frame?.destroy();frame=null;htmlRoot.replaceChildren();if(r.mode==='html'){frame=ctx.dom.createSandboxFrame({html:staticHTML(r.content),minHeight:240});htmlRoot.append(frame.element);}status.textContent=`저장됨 · revision ${r.revision}${r.indexPending?' · 인덱스 복구 필요':''}${r.needsRemap?' · 호스트 ID 재매핑 필요':''}`;};
-
- const loadBooks=async()=>{const page=await rpc('books',{offset:bookOffset});book.replaceChildren();for(const row of page.data){const o=el('option',row.name||row.id,book);o.value=row.id;}status.textContent=`World Books ${bookOffset+1}–${bookOffset+page.data.length} / ${page.total}`;};
- const loadEntries=async()=>{if(!book.value)throw Error('책 선택 필요');const bookId=book.value;const page=await rpc('entries',{bookId,offset:entryOffset});chosenBooks.add(bookId);bookRows.replaceChildren();for(const row of page.data){const label=el('label',row.comment||row.id,bookRows);label.className='ss-check';const c=el('input','',label);c.type='checkbox';c.checked=world.value.split(',').includes(row.id);c.onchange=()=>{const selected=new Set(world.value.split(',').filter(Boolean));c.checked?selected.add(row.id):selected.delete(row.id);world.value=[...selected].join(',');invalidate();};}status.textContent=`Entries ${entryOffset+1}–${entryOffset+page.data.length} / ${page.total}`;};
- action('World Books 목록',async()=>{bookOffset=0;await loadBooks();});action('책 이전 페이지',async()=>{bookOffset=Math.max(0,bookOffset-20);await loadBooks();});action('책 다음 페이지',async()=>{bookOffset+=20;await loadBooks();});
- action('선택한 책 엔트리',async()=>{entryOffset=0;await loadEntries();});action('엔트리 이전 페이지',async()=>{entryOffset=Math.max(0,entryOffset-20);await loadEntries();});action('엔트리 다음 페이지',async()=>{entryOffset+=20;await loadEntries();});book.onchange=()=>{entryOffset=0;invalidate();};
- action('자료 불러오기',async()=>{const e=epoch;const c=await rpc('catalog');if(disposed||e!==epoch)return;connection.replaceChildren();const empty=el('option','연결을 명시적으로 선택하세요',connection);empty.value='';for(const x of c.connections){const o=el('option',`${x.name||x.id} / ${x.model}`,connection);o.value=x.id;if(x.id===ctx.state?.get('connections.active')?.activeProfileId)o.selected=true;}presetSelect.replaceChildren(noPreset);for(const x of c.presets||[]){const lv=x.support?.level;const o=el('option',lv==='unsupported'?`${x.name} (미지원: ${x.support.reason})`:lv==='partial'?`${x.name} (부분 지원: ${x.support.reason})`:lv==='none'?`${x.name} (${x.support.reason})`:x.name,presetSelect);o.value=x.id;o.disabled=lv==='unsupported';}presetSelect.value=(c.presets||[]).some(x=>x.id===c.settings?.presetId&&x.support?.level!=='unsupported')?c.settings.presetId:'';loomHint.hidden=!!c.hasLoomSummary;ui.catalog(c);status.textContent=(c.hasLoomSummary?'루미버스 요약을 기본으로 넣습니다.':'이 채팅에는 루미버스 요약이 없습니다. 필요하면 직접 요약을 적어 주세요.')+' 원문은 참고 자료의 ‘원문 일부 넣기’에서 번호로 고를 수 있습니다.'+(c.presetsError?` (프리셋 목록을 불러오지 못했습니다: ${c.presetsError})`:'');invalidate();});
- presetSelect.addEventListener('change',()=>{rpc('saveSettings',{presetId:presetSelect.value}).catch(e=>{if(!disposed&&e.message!=='stale result')status.textContent=e.message;});});
- action('프롬프트 미리보기',async()=>{const e=epoch;const p=await rpc('preview',{mode:mode.value,connectionId:connection.value,dialogue:rawSelection(),worldBookIds:[...chosenBooks],worldIds:world.value.split(',').map(s=>s.trim()).filter(Boolean),presetId:presetSelect.value,includeLoomSummary:loomSummary.checked,includeCharacter:character.checked,includePersona:persona.checked,summary:summary.value,identityId:identity.value,request:request.value,budget:Number(budget.value)});if(e!==epoch||disposed)return;preview=p;prompt.textContent=JSON.stringify({connection:p.connectionId,model:p.model,preset:p.preset,summarySource:p.summarySource,dialogueSource:p.dialogueSource,count:p.count,notices:p.notices,excluded:p.excluded,messages:p.messages},null,2);ui.preview();run.disabled=false;status.textContent='실제 전송 입력을 확인한 뒤 생성하세요.';});
- const run=action('확인한 입력으로 생성',async()=>{if(!preview)throw Error('미리보기 필요');const e=epoch;const r=await rpc('run',{previewId:preview.id,requestId:preview.requestId||(preview.requestId=crypto.randomUUID())});if(e===epoch&&!disposed)show(r);});run.disabled=true;
- action('취소',async()=>{invalidate();await rpc('cancel');status.textContent='취소됨';});
- action('편집을 자식 결과로 저장',async()=>{if(!record)throw Error('결과 선택 필요');show(await rpc('edit',{id:record.id,revision:record.revision,content:output.value}));});
- action('보관함 / 인덱스 복구',async()=>{const e=epoch;const rows=await rpc('list');if(disposed||e!==epoch)return;ui.resetArchive();ui.identities(rows,true);for(const r of rows)ui.archiveCard(r,()=>show(r));status.textContent=`${rows.length}개 결과`;});
- action('핵심정보로 선택',async()=>{if(record?.mode!=='identity')throw Error('핵심정보 결과를 선택하세요');show(await rpc('approveIdentity',{id:record.id,revision:record.revision}));identity.value=record.id;mode.value='au';mode.dispatchEvent(new Event('input',{bubbles:true}));});
- action('현재 채팅으로 ID 재매핑 확인',async()=>{if(!record?.needsRemap)throw Error('재매핑할 import 결과 선택');show(await rpc('remap',{id:record.id}));});
- action('전체 JSON 내보내기',async()=>download('side-story.json',JSON.stringify({schema:1,records:await rpc('list')},null,2)));
- const upload=field('JSON 가져오기');upload.type='file';upload.accept='.json';upload.onchange=async()=>{try{const e=epoch;const f=upload.files[0];if(f.size>1000000)throw Error('import size');const raw=await f.text();if(disposed||e!==epoch)return;await rpc('import',{raw});status.textContent='가져왔습니다. 보관함에서 ID 재매핑을 확인하세요.';}catch(e){status.textContent=e.message;}};
- action('새 채팅용 텍스트 내보내기',async()=>{if(!record)throw Error('결과 선택');download('side-story-chat.txt',displayText(record),'text/plain');});
- action('AU 카드 초안 내보내기',async()=>{if(record?.mode!=='au')throw Error('AU 결과 선택');download('side-story-au.json',JSON.stringify({spec:'chara_card_v2',spec_version:'2.0',data:{name:'AU 초안',description:displayText(record),personality:'',scenario:'',first_mes:'',mes_example:'',creator_notes:'Side Story 비공식 AU 초안',system_prompt:'',post_history_instructions:'',alternate_greetings:[],tags:[],creator:'',character_version:'',extensions:{}}},null,2));});
- action('정적 HTML 내보내기',async()=>{if(!record)throw Error('결과 선택');download('side-story.html',exportHTML(record.content),'text/html');});
- const language=field('번역 언어');language.value='한국어';language.addEventListener('input',invalidate);
- action('번역 프롬프트 미리보기',async()=>{if(!record)throw Error('결과 선택');translationPreview=await rpc('translationPreview',{id:record.id,revision:record.revision,connectionId:connection.value,language:language.value});prompt.textContent=JSON.stringify(translationPreview,null,2);});
- action('확인한 입력으로 번역',async()=>{if(!translationPreview)throw Error('번역 미리보기 필요');show(await rpc('translationRun',{previewId:translationPreview.id}));translationPreview=null;});
- const trans=field('번역 segment JSON (수동 복구 입력)','textarea');
- action('번역 segment 원문',async()=>{if(!record)throw Error('결과 선택');trans.value=JSON.stringify(segments(record.content,record.mode),null,2);});
- action('번역 검증·보관',async()=>{if(!record)throw Error('결과 선택');show(await rpc('translate',{id:record.id,revision:record.revision,rows:JSON.parse(trans.value)}));status.textContent=record.translation.complete?'번역 ID 검증 완료':JSON.stringify(record.translation);});
- action('번역 보기',async()=>{if(!record?.translation?.complete)throw Error('완전한 번역 필요');output.value=record.translation.segments.map(s=>s.text).join('\n\n');ui.showResult(record,output.value);if(record.mode==='html'){frame?.destroy();frame=ctx.dom.createSandboxFrame({html:translatedHTML(record.content,record.translation),minHeight:240});htmlRoot.replaceChildren(frame.element);}});
- action('원문 보기',async()=>{if(record)show(record);});
- const pattern=field('표시 치환 정규식'),replacement=field('표시 치환 문자열');
- action('표시에만 치환',async()=>{if(!record)throw Error('결과 선택');const e=epoch;const value=await replaceDisplay(displayText(record),pattern.value,replacement.value);if(e===epoch&&!disposed){if(record.mode!=='identity')output.value=value;ui.showResult(record,value);}});
- const bg=field('임시 PNG/JPEG 배경');bg.type='file';bg.accept='image/png,image/jpeg';bg.onchange=async()=>{try{const e=epoch;const f=bg.files[0];if(f.size>5000000||!['image/png','image/jpeg'].includes(f.type))throw Error('배경 크기/종류');const bitmap=await createImageBitmap(f);if(disposed||e!==epoch){bitmap.close();return;}background?.close();background=bitmap;}catch(e){status.textContent=e.message;}};
- action('선택 텍스트 PNG',async()=>{const e=epoch;const value=output.value.slice(output.selectionStart,output.selectionEnd)||output.value;const png=await excerptPNG(value,background);if(!disposed&&e===epoch)download('side-story-excerpt.png',png);});
- syncRaw();ui.bindMode(mode);ui.bindIdentity(identity);ui.onNavigate(page=>{if(page==='archive')actions.get('보관함 / 인덱스 복구').click();});
- request.placeholder='예시) 비가 그친 뒤, 두 사람이 처음으로 솔직한 이야기를 나누는 장면을 써 주세요.';
- return()=>{disposed=true;epoch++;disposeWorkers();ctx.sendToBackend({id:crypto.randomUUID(),op:'cancel'});unsub();eventOff.forEach(f=>f());for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('disabled'));}pending.clear();frame?.destroy();background?.close();tab.destroy();};
+ const tab=ctx.ui.registerDrawerTab({id:'side_story',title:'Side Story (사이드 스토리)',shortName:'Side',description:'루미버스용 · 비공식 (Unofficial, for Lumiverse)',keywords:['side story','사이드 스토리','외전','번역','AU']});
+ const rpc=createRpc(ctx);
+ const host=createLumiverseHost({ctx,rpc,tab});
+ runSideStory(host).catch(e=>{console.error('[Side Story]',e);host.fail(e);});
+ return()=>{host.cleanup();rpc.dispose();tab.destroy();};
 }

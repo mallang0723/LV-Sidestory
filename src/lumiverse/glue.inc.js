@@ -12,7 +12,7 @@ wideScreen=function(){return stHost.width()>=1200;};
 // 4. The drawer has its own close; "close" inside Side Story returns to the article list instead of a blank tab.
 {const upstreamClose=close;close=function(){upstreamClose();if(stHost.activeChatId()){opened=true;page='stories';render();}};}
 // 5. Load automatically: when the tab is shown and whenever the chat changes (upstream closes on chat change).
-const lumiverseOpen=()=>{if(alive&&activeChat())openFromWand().catch(e=>say(e.message,true));};
+const lumiverseOpen=()=>{if(alive&&activeChat())openFromWand().then(()=>{const note=stHost.takeMigrationNotice();if(note)say(note);}).catch(e=>say(e.message,true));};
 if(chatEvent)stContext.eventSource?.on(chatEvent,lumiverseOpen);
 stHost.onActivate(lumiverseOpen);
 stHost.mount(host,lumiverseOpen);

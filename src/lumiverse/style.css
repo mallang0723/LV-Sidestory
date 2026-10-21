@@ -6,3 +6,5 @@
 #close{display:none!important}
 /* RP preset switching is SillyTavern-only (Lumiverse uses the active preset); the rows stay out of the way. */
 button[data-sheet=preset],.stack>div:has(>.group>button[data-sheet=preset]){display:none!important}
+/* Spindle has no API to create a chat, so "start a new chat from this article" is not offered (copy instead). */
+button#new-result-chat{display:none!important}

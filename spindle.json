@@ -1,12 +1,12 @@
 {
-  "version": "0.1.6",
+  "version": "0.2.0",
   "name": "Side Story (사이드 스토리)",
   "identifier": "side_story",
   "author": "mallang0723; upstream Byulchaek contributors",
   "github": "https://github.com/mallang0723/LV-Sidestory",
   "homepage": "https://github.com/mallang0723/LV-Sidestory",
   "description": "루미버스용 · 비공식 (Unofficial, for Lumiverse)",
-  "permissions": ["generation", "chats", "chat_mutation", "characters", "personas", "world_books", "presets"],
+  "permissions": ["generation", "chats", "chat_mutation", "characters", "personas", "world_books"],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js"
 }
