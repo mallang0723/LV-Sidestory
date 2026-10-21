@@ -81,17 +81,22 @@ try{
   await step('archive-full',async()=>{await click('[data-page="archive"]');await sleep(400);await measure('archive-full');});
   await step('identity reader scrolls',async()=>{await click('[data-open="5d1c2a10-0000-4000-8000-000000000002"]');await until(`!!${S}.querySelector('#reader .identity-preview')`);await sleep(300);const [x,y]=await evaluate(`(()=>{const r=${S}.getElementById('reader').getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)];})()`);await call('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});for(let i=1;i<=10;i++)await call('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y-12*i}]});await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sleep(400);const top=await evaluate(`${S}.getElementById('reader').scrollTop`);if(!(top>0))throw Error('identity reader did not scroll on touch');await measure('identity');await click('[data-page="archive"]');});
   await step('identity sources (group chat + persona)',async()=>{
-   const G='0c0c0c0c-4444-4f00-8000-00000000000a';
+   // Group [레온, 아드리안] with 아드리안 second, persona 정수빈; a solo chat of 아드리안; chat-1 is 에이든 alone.
+   const G='0c0c0c0c-4444-4f00-8000-00000000000a',SOLO='0c0c0c0c-5555-4f00-8000-00000000000b',JUNG='9a8b7c6d-3333-4e5f-8a9b-000000000003';
    const sources=()=>evaluate(`[...${S}.querySelectorAll('.facet-source-person')].map(e=>e.querySelector('.facet-source-heading')?.textContent.trim()||'')`);
    const openAU=async()=>{await click('[data-pane="compose"]');await click('[data-mode="facet"]');await click('[data-facet-work="au"]');await sleep(200);if(await evaluate(`${S}.querySelector('[data-facet-choice="target"][data-value="both"]')?.getAttribute('aria-pressed')!=='true'`))await click('[data-facet-choice="target"][data-value="both"]');await sleep(300);};
-   const check=async label=>{const s=await sources();if(s.length!==2||s.some(x=>/미추출/.test(x))||!s.some(x=>/아드리안/.test(x))||!s.some(x=>/정수빈/.test(x)))throw Error(label+': '+JSON.stringify(s));};
-   await evaluate(`qa.setState('persona.activeId','9a8b7c6d-3333-4e5f-8a9b-000000000003');qa.setState('chat.active',{chatId:'${G}'})`);await sleep(1000);
-   await openAU();const before=await sources();if(!before.every(x=>/미추출/.test(x)))throw Error('expected 미추출 before extraction: '+JSON.stringify(before));
-   await click('[data-facet-work="identity"]');await click('[data-facet-extract-target="both"]');await evaluate('window.qaReply="identity"');await click('#generate');await until(`!!${S}.querySelector('.identity-preview')`,10000,'identity result');await click('#facet-use-identity');await sleep(500);
-   await openAU();await check('after extraction');await measure('identity-sources');
-   await evaluate(`qa.setState('chat.active',{chatId:'chat-1'})`);await sleep(900);await evaluate(`qa.setState('chat.active',{chatId:'${G}'})`);await sleep(1000);await openAU();await check('after chat switch');
-   await evaluate('qa.remount()');await until(`!!${S}?.querySelector('.window:not([hidden])')`,10000,'remount');await sleep(900);await openAU();await check('after reopen');
-   await evaluate(`qa.setState('chat.active',{chatId:'chat-1'})`);await sleep(900);await click('[data-page="archive"]');
+   const go=async(chat,persona=JUNG)=>{await evaluate(`qa.setState('persona.activeId','${persona}');qa.setState('chat.active',{chatId:'${chat}'})`);await sleep(1100);await openAU();};
+   const expect=async(label,character,persona)=>{const s=await sources();const ok=s.length===2&&(character?s[0].includes(character)&&!/미추출/.test(s[0]):/미추출/.test(s[0]))&&(persona?s[1].includes(persona)&&!/미추출/.test(s[1]):/미추출/.test(s[1]));if(!ok)throw Error(label+': '+JSON.stringify(s));};
+   await go(G);await expect('group before extraction',null,null);
+   await click('[data-facet-work="identity"]');await click('[data-facet-extract-target="both"]');await evaluate('window.qaReply="identity"');await click('#generate');await until(`!!${S}.querySelector('.identity-preview')`,10000,'identity result');await sleep(300);
+   await openAU();await expect('group after extraction','아드리안','정수빈');await measure('identity-sources');
+   await go(SOLO);await expect('아드리안 solo chat','아드리안','정수빈');
+   await go('chat-1');await expect('에이든 chat (only 에이든 extraction)','에이든','정수빈');
+   await go('chat-1','persona-1');await expect('other persona','에이든',null);
+   await go(G);await expect('back to group','아드리안','정수빈');
+   await evaluate('qa.remount()');await until(`!!${S}?.querySelector('.window:not([hidden])')`,10000,'remount');await sleep(900);await openAU();await expect('after reopen','아드리안','정수빈');
+   await go(SOLO);await expect('solo after reopen','아드리안','정수빈');
+   await evaluate(`qa.setState('persona.activeId','persona-1');qa.setState('chat.active',{chatId:'chat-1'})`);await sleep(900);await click('[data-page="archive"]');
   });
   await step('chat switch',async()=>{await evaluate(`qa.setState('chat.active',{chatId:'chat-2'})`);await sleep(900);const open=await evaluate(`!!${S}.querySelector('.window:not([hidden])')`);if(!open)throw Error('app not reopened after chat switch');await measure('chat-switch');});
  }

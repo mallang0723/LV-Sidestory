@@ -40,7 +40,8 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
 
  const onChat=()=>{const next=activeChatId();if(next===boundChat)return;boundChat=next;cache={chatId:'',rows:[]};running?.abort?.();eventSource.emit('CHAT_CHANGED',next);};
  boundChat=activeChatId();
- if(ctx.state?.subscribe){cleanups.push(ctx.state.subscribe('chat.active',onChat));cleanups.push(ctx.state.subscribe('chat.messageCount',scheduleMessages));}
+ const personaHandlers=new Set();
+ if(ctx.state?.subscribe){cleanups.push(ctx.state.subscribe('chat.active',onChat));cleanups.push(ctx.state.subscribe('persona.activeId',()=>{for(const fn of personaHandlers)try{fn();}catch{}}));cleanups.push(ctx.state.subscribe('chat.messageCount',scheduleMessages));}
  if(ctx.events?.on){for(const e of ['CHAT_SWITCHED'])cleanups.push(ctx.events.on(e,onChat));for(const e of ['MESSAGE_SENT','MESSAGE_EDITED','MESSAGE_DELETED','MESSAGE_SWIPED','GENERATION_ENDED'])cleanups.push(ctx.events.on(e,scheduleMessages));}
 
  // ---- upstream stHost.request routes
@@ -135,6 +136,7 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
   setTimeout:setTimer,clearTimeout:clearTimer,
   width:()=>root.clientWidth||0,
   opened(flag){isOpen=!!flag;placeholder.hidden=isOpen;if(isOpen&&cache.chatId!==activeChatId())loadMessages().catch(()=>{});},
+  onPersonaChange(fn){personaHandlers.add(fn);cleanups.push(()=>personaHandlers.delete(fn));},
   onActivate(fn){const off=tab.onActivate?.(fn);if(typeof off==='function')cleanups.push(off);},
   mount(element,open){root.insertBefore(element,placeholder);if(drawerOnUs())open();},
   requestPreview(){previewNext=true;previewShown=false;},

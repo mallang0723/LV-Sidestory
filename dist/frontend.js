@@ -8660,6 +8660,12 @@ ${item.inner}` : ""].filter(Boolean).join(`
   if (chatEvent)
     stContext.eventSource?.on(chatEvent, lumiverseOpen);
   stHost.onActivate(lumiverseOpen);
+  stHost.onPersonaChange?.(() => {
+    if (alive && opened && activeChat()) {
+      chatId = activeChat();
+      refresh().catch?.(() => {});
+    }
+  });
   stHost.mount(host, lumiverseOpen);
   {
     const upstreamCompose = composeScreen;
@@ -8691,18 +8697,55 @@ ${item.inner}` : ""].filter(Boolean).join(`
   if (saved?.sideStory?.viewerSize === undefined) {
     s.viewerSize = 16;
   }
+  const lvNorm = (v) => String(v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  function lvSubject(r, kind) {
+    return r?.facetPlan?.subjects?.find((x) => x?.kind === kind) || null;
+  }
+  function lvExtractedCharacterId(r) {
+    const subject = lvSubject(r, "character");
+    if (!subject)
+      return null;
+    const ids = r.characterIds || [], names = r.characterNames || [], at = names.findIndex((n) => lvNorm(n) === lvNorm(subject.name));
+    if (at >= 0 && ids[at])
+      return ids[at];
+    if (ids.length === 1)
+      return ids[0];
+    return characters.find((c) => lvNorm(H.character(c).name) === lvNorm(subject.name))?.id || null;
+  }
+  function lvCurrentPersona() {
+    const id = (s.personaIds || [])[0] || "";
+    return personas.find((p) => "persona:" + p.id === id || p.id === id) || null;
+  }
+  facetSources = function(kind) {
+    const plans = records.filter((r) => r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan?.schema === SideIdentity.SCHEMA && lvSubject(r, kind));
+    let rows;
+    if (kind === "character") {
+      const members = new Set(s.characterIds || []), names = new Set(characters.filter((c) => members.has(c.id)).map((c) => lvNorm(H.character(c).name)));
+      rows = plans.filter((r) => {
+        const id = lvExtractedCharacterId(r);
+        return id ? members.has(id) : names.has(lvNorm(lvSubject(r, "character").name));
+      });
+    } else {
+      const current2 = (s.personaIds || [])[0] || "", persona = lvCurrentPersona(), name = persona ? lvNorm(H.character(persona).name) : "";
+      rows = plans.filter((r) => {
+        const id = (r.settings?.personaIds || [])[0];
+        return id && id === current2 || !!name && lvNorm(lvSubject(r, "user").name) === name;
+      });
+    }
+    return rows.sort((a, b) => (b.editedAt || b.createdAt || 0) - (a.editedAt || a.createdAt || 0));
+  };
   {
-    const upstreamSources = facetSources, norm = (v) => String(v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
-    facetSources = function(kind) {
-      const rows = upstreamSources(kind);
-      if (rows.length)
-        return rows;
-      const id = kind === "character" ? (s.characterIds || [])[0] : (s.personaIds || [])[0];
-      const card = kind === "character" ? characters.find((c) => c.id === id) : personas.find((p) => "persona:" + p.id === id || p.id === id);
-      const want = card ? norm(H.character(card).name) : "";
-      if (!want)
-        return rows;
-      return records.filter((r) => r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan?.schema === SideIdentity.SCHEMA && !(kind === "character" ? (r.characterIds || [])[0] : (r.settings?.personaIds || [])[0]) && r.facetPlan.subjects?.some((x) => x.kind === kind && norm(x.name) === want)).sort((a, b) => (b.editedAt || b.createdAt || 0) - (a.editedAt || a.createdAt || 0));
+    const upstreamReferenceOptions = referenceOptions;
+    referenceOptions = function() {
+      const o = upstreamReferenceOptions();
+      if (o.mode === "facet" && Array.isArray(o.characterIds) && o.characterIds.length > 1) {
+        try {
+          const id = lvExtractedCharacterId(facetSelectedSource("character"));
+          if (id && o.characterIds.includes(id) && o.characterIds[0] !== id)
+            o.characterIds = [id, ...o.characterIds.filter((x) => x !== id)];
+        } catch {}
+      }
+      return o;
     };
   }
 }
@@ -8939,8 +8982,15 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
     eventSource.emit("CHAT_CHANGED", next);
   };
   boundChat = activeChatId();
+  const personaHandlers = new Set;
   if (ctx.state?.subscribe) {
     cleanups.push(ctx.state.subscribe("chat.active", onChat));
+    cleanups.push(ctx.state.subscribe("persona.activeId", () => {
+      for (const fn of personaHandlers)
+        try {
+          fn();
+        } catch {}
+    }));
     cleanups.push(ctx.state.subscribe("chat.messageCount", scheduleMessages));
   }
   if (ctx.events?.on) {
@@ -9161,6 +9211,10 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
       placeholder.hidden = isOpen;
       if (isOpen && cache.chatId !== activeChatId())
         loadMessages().catch(() => {});
+    },
+    onPersonaChange(fn) {
+      personaHandlers.add(fn);
+      cleanups.push(() => personaHandlers.delete(fn));
     },
     onActivate(fn) {
       const off = tab.onActivate?.(fn);

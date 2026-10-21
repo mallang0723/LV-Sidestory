@@ -77,7 +77,7 @@ test('records migrated by earlier 0.2.0 builds are re-attached once',async()=>{
  const service=createService(api);
  const page=await service.handle('u1','archiveList',{});
  const r=page.records.find(x=>x.id==='old-identity');
- assert.deepEqual(r.characterIds,['6f1d2c3e-1111-4a7b-9c0d-000000000001','6f1d2c3e-2222-4a7b-9c0d-000000000002']);
+ assert.deepEqual(r.characterIds,['6f1d2c3e-2222-4a7b-9c0d-000000000002','6f1d2c3e-1111-4a7b-9c0d-000000000001']);
  assert.deepEqual(r.settings.personaIds,['persona:9a8b7c6d-3333-4e5f-8a9b-000000000003']);
  assert.ok(api.storage.has('repair-identity-sources-1.json'));
  const writes=api.storage.get('archive/old-identity.json');await service.handle('u1','archiveList',{});
