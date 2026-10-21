@@ -24,6 +24,9 @@
   - 기준 적용 전→후(360×460, 같은 화면들): 본문 최소 10–10.5px → 15px, 보조 최소 9px → 13px, 누름 영역 최소 18px → 44px. 기준 미달 개수 예: 새로 쓰기 글자 21·버튼 15 → 0·0, 로어북 글자 209·버튼 28 → 0·0, 결과 글자 8·버튼 9 → 0·0, 설정 글자 19·보조 14·버튼 8 → 0·0·0. 1280×800 데스크톱 서랍(약 423px 폭)도 같은 기준을 통과합니다.
   - 예외(검사에서 빼고 보고): 테마 색 동그라미 `.swatch`(24px, 44px 일곱 개가 360px 한 줄에 들어가지 않음, 줄 자체는 44px), 말하기 카드 위치 점 `.speak-news-dot`(같은 일을 하는 44px 이전·다음 버튼과 넘기기 동작이 있음), 화면 읽기 전용 텍스트와 잠깐 뜨는 알림.
 
+- `npm run qa:scroll` — 통과(40건). Playwright로 **Firefox**와 Chromium(터치 켬, Chromium은 모바일 에뮬레이션)에서 서랍 대역을 360×460·390×844로 열고, 보관함·새로 쓰기·참고 자료·설정과 인물 추출(보기·항목별 편집)·AU·스토리·HTML·말하기 아티클마다 손가락 아래의 스크롤 영역을 찾아 휠로 스크롤되는지, 터치 끌기로 스크롤되는지(Chromium은 CDP 실제 터치 이벤트, Firefox는 Playwright가 터치 끌기를 못 만들어 스크롤 위치 직접 변경), 그리고 손가락과 스크롤 영역 사이에 “스크롤할 것이 없는데 overscroll-behavior:contain인 영역”이 끼어 있지 않은지 검사합니다. 결과는 `qa/scroll-report.json`(git 제외). Playwright는 프로젝트 의존성이 아니라 `PLAYWRIGHT_MODULE`(playwright 모듈 경로), `FIREFOX_BIN`으로 지정합니다. `npm run qa:browser`에도 인물 추출 화면을 터치로 끌어 스크롤되는지 확인하는 단계가 있습니다.
+  - **고친 문제(실기기 Firefox for Android에서 보고):** 보관함에서 인물 추출(AU 1/2 단계) 아티클을 열면 내용이 전혀 스크롤되지 않았습니다. 원작은 이 화면에서 `#reader` 안에 `overflow:auto` + `overscroll-behavior:contain` 상자 두 개(`.facet-plan-preview`, 그 안의 `.facet-plan-scroll`)를 더 겹쳐 두는데, 높이가 정해지지 않아 스스로는 스크롤할 것이 없으면서도 스크롤 영역이라 터치·휠을 받아 버리고 `contain` 때문에 바깥 `#reader`로 넘기지 않습니다. 고치기 전 빌드로 같은 검사를 돌리면 Chromium은 휠·터치 모두 0px, Firefox도 막는 상자를 감지했고, 고친 뒤에는 모두 통과합니다. 수정은 `src/lumiverse/style.css`에서 두 상자를 일반 상자로 바꿔 `#reader` 하나만 스크롤하게 한 것입니다(원작 파일 수정 없음). 서랍 대역의 스크롤 구조(`panelContent`: overflow-y auto, `.panel`: overflow hidden, 탭 뿌리 높이 100%)는 루미버스 `ViewportDrawer.module.css`·`TabPanelContent.tsx`를 따라 만들었습니다.
+
 ## 차이 분석(2026-10-21) 대비 상태
 
 | 우선순위 | 항목 | 상태 |

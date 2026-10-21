@@ -1285,6 +1285,12 @@ button#new-result-chat{display:none!important}
 .dock:has(#lv-preview){display:flex;gap:8px}
 .dock #lv-preview{flex:none;padding-inline:16px}
 .dock #lv-preview+#generate{flex:1;width:auto}
+/* Scrolling. Upstream's identity/AU-plan reader nests two more overflow:auto boxes with
+   overscroll-behavior:contain inside #reader. They never get a bounded height, so they never scroll
+   themselves, but as scroll containers they still catch the wheel/touch gesture and, being "contain",
+   do not hand it on to #reader: the page looks stuck (seen on Firefox for Android; reproducible in
+   Chromium). Make #reader the only scroller there; the sticky action bar now sticks to #reader. */
+#reader .facet-plan-preview,#reader .facet-plan-preview .facet-plan-scroll{overflow:visible;overscroll-behavior:auto;height:auto;max-height:none}
 `;
   const SideReplace = (() => {
     function clean(rows) {
