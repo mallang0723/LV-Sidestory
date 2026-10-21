@@ -18,3 +18,7 @@ button#new-result-chat{display:none!important}
  .continue:not(:focus-within) .continue-opts{display:none}
  .continue{padding-top:6px;padding-bottom:6px}
 }
+/* Optional preview next to 생성하기 (src/lumiverse/glue.inc.js). */
+.dock:has(#lv-preview){display:flex;gap:8px}
+.dock #lv-preview{flex:none;padding-inline:16px}
+.dock #lv-preview+#generate{flex:1;width:auto}

@@ -187,3 +187,16 @@ test('{{char}}/{{user}} are filled only when names are known',()=>{
  assert.equal(fillNames('{{char}}·{{USER}}',{char:'A',user:'B'}),'A·B');
  assert.equal(fillNames('{{char}}',{}),'{{char}}');
 });
+
+test('optional preview assembles the prompt but never calls the model',async()=>{
+ const w=wire();const {host,rpc}=makeHost(w);
+ host.requestPreview();let ready=null;
+ await assert.rejects(host.generate({connectionId:CURRENT,useSillyTavernContext:true,quietPrompt:'<SIDESTORY>p</SIDESTORY>',messages:[],parameters:{maxTokens:100},onPromptReady:i=>ready=i},new AbortController().signal),/미리보기만 만들었어요/);
+ assert.equal(ready.messages.at(-1).content,'<SIDESTORY>p</SIDESTORY>');
+ assert.equal(w.api.calls.filter(c=>c.name==='generate.raw').length,0);
+ assert.equal(host.takePreviewShown(),true);
+ // The next generation is a normal one again.
+ await host.generate({connectionId:CURRENT,useSillyTavernContext:true,quietPrompt:'q',messages:[],parameters:{maxTokens:100}},new AbortController().signal);
+ assert.equal(w.api.calls.filter(c=>c.name==='generate.raw').length,1);
+ host.cleanup();rpc.dispose();w.dispose();
+});

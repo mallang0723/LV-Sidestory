@@ -16,3 +16,7 @@ const lumiverseOpen=()=>{if(alive&&activeChat())openFromWand().then(()=>{const n
 if(chatEvent)stContext.eventSource?.on(chatEvent,lumiverseOpen);
 stHost.onActivate(lumiverseOpen);
 stHost.mount(host,lumiverseOpen);
+// 6. Optional prompt preview (upstream sends right away; that stays the default). "미리보기" runs the same
+//    path up to the point of sending, records the final prompt in 프롬프트 내역, and sends nothing.
+{const upstreamCompose=composeScreen;composeScreen=function(){const html=upstreamCompose();return html.replace('<button id="generate" class="btn primary wide"',`<button id="lv-preview" class="btn quiet" ${loading?'disabled':''} title="보내지 않고 최종 프롬프트만 만들어 봐요">미리보기</button><button id="generate" class="btn primary wide"`);};}
+root.addEventListener('click',e=>{const b=e.target.closest?.('#lv-preview');if(!b||b.disabled||busy)return;stHost.requestPreview();run(s.mode==='facet'&&s.facetWorkspace==='identity'?'facet-extract':'new').catch(x=>say(x.message,true)).finally(()=>{if(stHost.takePreviewShown()&&alive){const last=requestCache.at(-1);if(last){last.status='미리보기 · 보내지 않음';delete last.error;cacheSave();}page='settings';settingsTab='requests';sheet='';render();}});});

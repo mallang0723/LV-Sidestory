@@ -11,6 +11,8 @@ const replies={
  speak:'<sideb-response><request>민트초코 vs 하와이안 피자</request><spoken>…민트초코. 이유는 묻지 마.</spoken><inner>사실 둘 다 먹어 본 적이 없다.</inner></sideb-response>',
 };
 window.qaReply='story';
+// Echoes the translation items back as JSON, the way the translation prompt asks for.
+function translate(input){const src=input.messages.at(-1).content;const items=[];const re=/⟦([^⟧]+)⟧\n([\s\S]*?)(?=\n\n⟦|$)/g;for(const m of src.matchAll(re))items.push({id:/^\d+$/.test(m[1])?Number(m[1]):m[1],text:'[EN] '+m[2]});return JSON.stringify({items});}
 let frontend=null;
 // Results saved by Side Story 0.1.x (records/<id>.json), to watch the migration into the new archive.
 const old=[
@@ -18,7 +20,7 @@ const old=[
  {id:'5d1c2a10-0000-4000-8000-000000000002',revision:2,schema:1,mode:'identity',content:'{}',facetPlan:{schema:'sidestory-identity-v1',subjects:[{kind:'character',name:'에이든',gender:'남성',age:'20대',relative_age:'',alignment:'중립',background_context:'원본에 명시 없음',hair:'검은색',eyes:'회색',height:'큰 편',build:'마른 체형',design:'차분한 인상',temperament:['과묵함'],speech:'짧게 말함',interpersonal:['경계심'],sheet_layout:['이름','성격']}],relationship:'',counterpart:null},identityApproved:true,host:{chatId:'chat-1'},createdAt:Date.now()-7200000,requestId:'r2'},
  {id:'5d1c2a10-0000-4000-8000-000000000003',revision:1,schema:1,mode:'html',content:'<h2>메모</h2><p>정적 HTML 결과</p>',host:{chatId:'chat-1'},createdAt:Date.now()-3600000,requestId:'r3'},
 ];
-const api=createFakeSpindle({storage:Object.fromEntries(old.map(r=>['records/'+r.id+'.json',JSON.stringify(r)])),onSend:p=>setTimeout(()=>frontend?.(p),5),rawText:()=>replies[window.qaReply]||replies.story,rawDelay:120});
+const api=createFakeSpindle({storage:Object.fromEntries(old.map(r=>['records/'+r.id+'.json',JSON.stringify(r)])),onSend:p=>setTimeout(()=>frontend?.(p),5),rawText:input=>window.qaReply==='translate'?translate(input):replies[window.qaReply]||replies.story,rawDelay:120});
 install(api);
 const state={'chat.active':{chatId:'chat-1',characterId:'char-a'},'persona.activeId':'persona-1','connections.active':{activeProfileId:'conn-1'},'ui.drawer':{open:true,tabId:'side_story:tab'}};
 const subs=new Map(),activators=new Set();

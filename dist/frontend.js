@@ -925,6 +925,10 @@ button#new-result-chat{display:none!important}
  .continue:not(:focus-within) .continue-opts{display:none}
  .continue{padding-top:6px;padding-bottom:6px}
 }
+/* Optional preview next to 생성하기 (src/lumiverse/glue.inc.js). */
+.dock:has(#lv-preview){display:flex;gap:8px}
+.dock #lv-preview{flex:none;padding-inline:16px}
+.dock #lv-preview+#generate{flex:1;width:auto}
 `;
   const SideReplace = (() => {
     function clean(rows) {
@@ -8295,6 +8299,33 @@ ${item.inner}` : ""].filter(Boolean).join(`
     stContext.eventSource?.on(chatEvent, lumiverseOpen);
   stHost.onActivate(lumiverseOpen);
   stHost.mount(host, lumiverseOpen);
+  {
+    const upstreamCompose = composeScreen;
+    composeScreen = function() {
+      const html = upstreamCompose();
+      return html.replace('<button id="generate" class="btn primary wide"', `<button id="lv-preview" class="btn quiet" ${loading ? "disabled" : ""} title="보내지 않고 최종 프롬프트만 만들어 봐요">미리보기</button><button id="generate" class="btn primary wide"`);
+    };
+  }
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest?.("#lv-preview");
+    if (!b || b.disabled || busy)
+      return;
+    stHost.requestPreview();
+    run(s.mode === "facet" && s.facetWorkspace === "identity" ? "facet-extract" : "new").catch((x) => say(x.message, true)).finally(() => {
+      if (stHost.takePreviewShown() && alive) {
+        const last = requestCache.at(-1);
+        if (last) {
+          last.status = "미리보기 · 보내지 않음";
+          delete last.error;
+          cacheSave();
+        }
+        page = "settings";
+        settingsTab = "requests";
+        sheet = "";
+        render();
+      }
+    });
+  });
 }
 
 // src/lumiverse/rpc.js
@@ -8448,7 +8479,7 @@ var estimate = (text) => {
 };
 function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.document, realIndexedDB = globalThis.indexedDB, setTimer = globalThis.setTimeout.bind(globalThis), clearTimer = globalThis.clearTimeout.bind(globalThis) }) {
   const cleanups = [];
-  let running = null, isOpen = false, boundChat = "", messageTimer = null, migrationNotice = "";
+  let previewNext = false, previewShown = false, running = null, isOpen = false, boundChat = "", messageTimer = null, migrationNotice = "";
   const state = (key) => {
     try {
       return ctx.state?.get?.(key);
@@ -8643,7 +8674,10 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
     if (running)
       throw Error("이전 API 요청이 종료될 때까지 잠시 기다려 주세요.");
     const runId = crypto.randomUUID(), { onPromptReady, onHistory, ...rest } = payload;
-    const clean = JSON.parse(JSON.stringify(rest));
+    const clean = JSON.parse(JSON.stringify(rest)), preview = previewNext;
+    previewNext = false;
+    if (preview)
+      clean.previewOnly = true;
     let handler;
     const job = { abort() {
       call("abort", { runId }).catch(() => {});
@@ -8664,6 +8698,10 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
       try {
         onPromptReady?.({ messages: result.finalPrompt || null, history: result.history || null, meta: result.meta || null });
       } catch {}
+      if (preview) {
+        previewShown = true;
+        throw Error("미리보기만 만들었어요. 보내지 않았어요. 아래 “최종 전송 프롬프트”에서 확인하세요.");
+      }
       if (typeof result?.text !== "string")
         throw Error("루미버스에서 텍스트 결과를 받지 못했어요.");
       return result.text;
@@ -8754,6 +8792,16 @@ function createLumiverseHost({ ctx, rpc, tab, document: doc = globalThis.documen
       root.insertBefore(element, placeholder);
       if (drawerOnUs())
         open();
+    },
+    requestPreview() {
+      previewNext = true;
+      previewShown = false;
+    },
+    takePreviewShown() {
+      const v = previewShown;
+      previewShown = false;
+      previewNext = false;
+      return v;
     },
     takeMigrationNotice() {
       const n = migrationNotice;

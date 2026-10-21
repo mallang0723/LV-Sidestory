@@ -122,6 +122,7 @@ export function createService(api,{now=()=>Date.now()}={}){
     if(!Array.isArray(payload.messages)||!payload.messages.length)throw Error('보낼 메시지가 없어요.');
     messages=payload.messages.map(m=>({role:['system','user','assistant'].includes(m?.role)?m.role:'user',content:fillNames(text(String(m?.content??'')),who)}));
    }
+   if(payload.previewOnly)return {preview:true,text:'',finalPrompt:messages,history,meta:{...meta,preview:true}};
    if(!model)throw Error('연결 프로필에 모델이 지정되지 않았어요. 루미버스 연결 설정에서 모델을 골라 주세요.');
    // Raw generation does not fall back to the connection's model, so the model is always passed explicitly.
    const result=await api.generate.raw({type:'raw',userId:u,messages,connection_id:connectionId,model,parameters,signal:controller.signal});

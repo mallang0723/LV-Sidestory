@@ -3,14 +3,12 @@
 Side Story (사이드 스토리)는 Byulchaek 및 ST-Sidestory 기여자의 작업을 바탕으로 합니다.
 원작은 [SillyTavern용 ST-Sidestory](https://github.com/f-en-rep/ST-Sidestory)와 [Marinara용 Side Story/이면 Side-B](https://m.dcinside.com/mini/aichatfrontend/163)이며, mallang0723이 원 게시글 작성자의 허가를 받아 Lumiverse용으로 변환·이식했습니다.
 
-참조한 SillyTavern 원본: https://github.com/f-en-rep/ST-Sidestory/tree/252fd07ebbb8e134d1e312f9aab034117ce03a95
-고정 버전: 0.9.8 / 252fd07ebbb8e134d1e312f9aab034117ce03a95.
+참조한 SillyTavern 원본: https://github.com/f-en-rep/ST-Sidestory/tree/727099430bb6725542656f1cd2b1adf1b3357f05
+고정 버전: 0.17.0 / 727099430bb6725542656f1cd2b1adf1b3357f05.
 
-프롬프트와 토큰 예산 코드의 재사용·수정 내역 및 원본 파일 SHA-256은 UPSTREAM.json에 기록합니다. 번역 계약과 HTML 텍스트 구간 처리 정책은 같은 버전 src/extras.js를 참고하여 구현했습니다. 호스트 소스는 포함하지 않습니다.
+0.2.0부터 이 고정 버전의 소스 파일을 `upstream/`에 바이트 그대로 포함하고(파일별 SHA-256·git blob은 UPSTREAM.json), 원작 `build.py`와 같은 방식으로 묶어 실행합니다. 원작의 SillyTavern 어댑터(`src/st-host.js`)는 실행물에 넣지 않고, 같은 역할을 하는 Lumiverse 어댑터(`src/lumiverse/`)를 새로 작성했습니다. 원작 파일에 가한 변경(버전 표기, 문서 전체 키 입력 처리, 호스트 이름 문구)은 `src/lumiverse/patches.mjs`에 모두 적었고, 화면 폭 조건을 서랍 폭 기준으로 바꾸는 스타일 변환은 `src/lumiverse/css-transform.mjs`에 있습니다. 원작 프롬프트·화면·보관함 형식은 원작 그대로입니다.
 
-identity 추출 프롬프트와 allowlist는 src/facet.js에서, 백업 envelope와 변환 규칙은 src/extension.js 및 src/core.js에서 수정·참조했습니다.
-
-작업 폴더 탭·작성/읽기·참고 자료·보관함의 화면 구조는 같은 고정 버전의 src/extension.js, src/composer.js, src/design.js, src/compact.js, src/style.css를 참고해 이식했습니다. 스타일은 호스트 drawer에 격리하고 Lumiverse 테마 변수로 연결했습니다. 원작의 전체 화면 overlay나 ST 전역 객체를 복제하지 않았습니다.
+이전 0.1.x는 원작 0.9.8(252fd07ebbb8e134d1e312f9aab034117ce03a95)의 일부를 참고해 다시 작성한 것이었으며, 0.2.0에서 그 코드를 걷어내고 위 방식으로 바꿨습니다.
 
 ## 원 게시글 및 허가 출처
 
@@ -30,3 +28,4 @@ identity 추출 프롬프트와 allowlist는 src/facet.js에서, 백업 envelope
 | 2026-10-15 | 원 게시글·개별 허가·라이선스 명시 |
 | 2026-10-15 | ST·Marinara 원작과 이식자 구분 |
 | 2026-10-16 | 원작 UI 참고 범위 통합 |
+| 2026-10-21 | 0.2.0: 고정 원작을 0.17.0으로 갱신, 원작 소스 포함·어댑터 방식 설명 |

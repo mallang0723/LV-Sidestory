@@ -9,7 +9,7 @@ const estimate=text=>{let a=0,b=0;for(const ch of text){if(ch.codePointAt(0)<128
 export const CURRENT='st-current';
 
 export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.document,realIndexedDB=globalThis.indexedDB,setTimer=globalThis.setTimeout.bind(globalThis),clearTimer=globalThis.clearTimeout.bind(globalThis)}){
- const cleanups=[];let running=null,isOpen=false,boundChat='',messageTimer=null,migrationNotice='';
+ const cleanups=[];let previewNext=false,previewShown=false,running=null,isOpen=false,boundChat='',messageTimer=null,migrationNotice='';
  const state=key=>{try{return ctx.state?.get?.(key);}catch{return null;}};
  const activeChatId=()=>String(state('chat.active')?.chatId||'');
  const activePersonaId=()=>String(state('persona.activeId')||'');
@@ -85,13 +85,15 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
   check(signal);
   if(running)throw Error('이전 API 요청이 종료될 때까지 잠시 기다려 주세요.');
   const runId=crypto.randomUUID(),{onPromptReady,onHistory,...rest}=payload;
-  const clean=JSON.parse(JSON.stringify(rest));
+  const clean=JSON.parse(JSON.stringify(rest)),preview=previewNext;previewNext=false;
+  if(preview)clean.previewOnly=true;
   let handler;const job={abort(){call('abort',{runId}).catch(()=>{});}};running=job;
   try{
    const cancelled=new Promise((_,reject)=>{handler=()=>{job.abort();reject(abortError());};signal?.addEventListener('abort',handler,{once:true});if(signal?.aborted)handler();});
    const result=await Promise.race([call('generate',{runId,chatId:activeChatId(),activeProfileId:activeProfileId(),personaId:activePersonaId(),payload:clean},{timeout:0}),cancelled]);
    check(signal);
    try{onPromptReady?.({messages:result.finalPrompt||null,history:result.history||null,meta:result.meta||null});}catch{}
+   if(preview){previewShown=true;throw Error('미리보기만 만들었어요. 보내지 않았어요. 아래 “최종 전송 프롬프트”에서 확인하세요.');}
    if(typeof result?.text!=='string')throw Error('루미버스에서 텍스트 결과를 받지 못했어요.');
    return result.text;
   }finally{signal?.removeEventListener('abort',handler);if(running===job)running=null;}
@@ -135,6 +137,8 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
   opened(flag){isOpen=!!flag;placeholder.hidden=isOpen;if(isOpen&&cache.chatId!==activeChatId())loadMessages().catch(()=>{});},
   onActivate(fn){const off=tab.onActivate?.(fn);if(typeof off==='function')cleanups.push(off);},
   mount(element,open){root.insertBefore(element,placeholder);if(drawerOnUs())open();},
+  requestPreview(){previewNext=true;previewShown=false;},
+  takePreviewShown(){const v=previewShown;previewShown=false;previewNext=false;return v;},
   takeMigrationNotice(){const n=migrationNotice;migrationNotice='';return n;},
   fail(error){placeholder.hidden=false;placeholder.textContent='Side Story를 시작하지 못했어요: '+(error?.message||error);},
   onCleanup(fn){cleanups.push(fn);},

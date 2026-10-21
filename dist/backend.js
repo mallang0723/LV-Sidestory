@@ -489,6 +489,8 @@ function createService(api, { now = () => Date.now() } = {}) {
           throw Error("\uBCF4\uB0BC \uBA54\uC2DC\uC9C0\uAC00 \uC5C6\uC5B4\uC694.");
         messages2 = payload.messages.map((m) => ({ role: ["system", "user", "assistant"].includes(m?.role) ? m.role : "user", content: fillNames(text(String(m?.content ?? "")), who) }));
       }
+      if (payload.previewOnly)
+        return { preview: true, text: "", finalPrompt: messages2, history, meta: { ...meta, preview: true } };
       if (!model)
         throw Error("\uC5F0\uACB0 \uD504\uB85C\uD544\uC5D0 \uBAA8\uB378\uC774 \uC9C0\uC815\uB418\uC9C0 \uC54A\uC558\uC5B4\uC694. \uB8E8\uBBF8\uBC84\uC2A4 \uC5F0\uACB0 \uC124\uC815\uC5D0\uC11C \uBAA8\uB378\uC744 \uACE8\uB77C \uC8FC\uC138\uC694.");
       const result = await api.generate.raw({ type: "raw", userId: u, messages: messages2, connection_id: connectionId, model, parameters, signal: controller.signal });
