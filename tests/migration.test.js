@@ -16,7 +16,7 @@ const old=[
 ];
 
 test('0.1.x records become upstream archive records',()=>{
- const {records,failed}=migrateRecords(old,new Set(),{characterOf:c=>c==='chat-1'?'char-a':'char-b'});
+ const {records,failed}=migrateRecords(old,new Set(),{chatCharacters:c=>c==='chat-1'?[{id:'char-a',name:'에이든'}]:[{id:'char-b',name:'다른 인물'}],personas:[{id:'p-1',name:'유리'}]});
  assert.equal(failed,1);
  const by=Object.fromEntries(records.map(r=>[r.id,r]));
  const story=by['old-story'];
@@ -56,3 +56,30 @@ test('large archives come back in pages',async()=>{
 });
 
 test('unknown input is ignored',()=>{assert.equal(migrateRecord(null),null);assert.equal(migrateRecord({id:'x'}),null);});
+
+test('identity extractions keep the ids upstream looks them up by (group chat, persona by name)',()=>{
+ const both={...plan,subjects:[plan.subjects[0],{...plan.subjects[0],kind:'user',name:'정수빈'}]};
+ const group=[{id:'6f1d-1',name:'레온'},{id:'6f1d-2',name:'에이든'}];
+ const {records}=migrateRecords([{id:'g-identity',schema:1,mode:'identity',content:'{}',facetPlan:both,host:{chatId:'group-chat'},createdAt:1,requestId:'r'}],new Set(),{chatCharacters:()=>group,personas:[{id:'9a8b',name:'정수빈'},{id:'x',name:'다른 사람'}]});
+ const r=records[0];
+ assert.deepEqual(r.characterIds,['6f1d-1','6f1d-2'],'whole group in chat order, like records upstream saves');
+ assert.deepEqual(r.settings.personaIds,['persona:9a8b']);
+ assert.equal(r.settings.facet.target,'both');
+ const none=migrateRecords([{id:'p-only',schema:1,mode:'identity',content:'{}',facetPlan:{...plan,subjects:[{...plan.subjects[0],kind:'user',name:'모르는 이름'}]},host:{chatId:'c'},createdAt:1}],new Set(),{chatCharacters:()=>[],personas:[{id:'a',name:'유리'}]}).records[0];
+ assert.deepEqual(none.settings.personaIds,[],'no guess when no persona has that name');
+});
+
+test('records migrated by earlier 0.2.0 builds are re-attached once',async()=>{
+ const G='0c0c0c0c-4444-4f00-8000-00000000000a';
+ const subjects=[{...plan.subjects[0],name:'아드리안 폰 아이젠베르크'},{...plan.subjects[0],kind:'user',name:'정수빈'}];
+ const broken={id:'old-identity',mode:'facet',facetPhase:'plan',facetPlan:{...plan,subjects},chatId:G,characterIds:['6f1d2c3e-1111-4a7b-9c0d-000000000001'],settings:{mode:'facet',facet:{target:'both'},personaIds:[]},migratedFrom:'lumiverse-0.1',content:'x',title:'t',createdAt:1};
+ const api=createFakeSpindle({storage:{'migration-0.2.0.json':JSON.stringify({migrated:1}),'archive/old-identity.json':JSON.stringify(broken)}});
+ const service=createService(api);
+ const page=await service.handle('u1','archiveList',{});
+ const r=page.records.find(x=>x.id==='old-identity');
+ assert.deepEqual(r.characterIds,['6f1d2c3e-1111-4a7b-9c0d-000000000001','6f1d2c3e-2222-4a7b-9c0d-000000000002']);
+ assert.deepEqual(r.settings.personaIds,['persona:9a8b7c6d-3333-4e5f-8a9b-000000000003']);
+ assert.ok(api.storage.has('repair-identity-sources-1.json'));
+ const writes=api.storage.get('archive/old-identity.json');await service.handle('u1','archiveList',{});
+ assert.equal(api.storage.get('archive/old-identity.json'),writes,'runs once');
+});

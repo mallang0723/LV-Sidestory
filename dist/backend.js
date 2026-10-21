@@ -198,6 +198,18 @@ function translationView(record, mode) {
 
 `), language: str(t.language, 120), batches: 1, inputTokens: 0, outputTokens: 0, createdAt: Number(record.createdAt) || Date.now() };
 }
+var norm2 = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+function identitySourceIds(plan, { characters = [], personas = [] } = {}) {
+  const characterIds = characters.map((c) => c?.id).filter((x) => typeof x === "string" && x);
+  const user = (plan?.subjects || []).find((x) => x?.kind === "user");
+  let personaIds = [];
+  if (user) {
+    const hits = personas.filter((p) => p && norm2(p.name) === norm2(user.name));
+    if (hits.length === 1)
+      personaIds = ["persona:" + hits[0].id];
+  }
+  return { characterIds, personaIds };
+}
 function migrateRecord(old, context = {}) {
   if (!old || typeof old !== "object" || typeof old.id !== "string" || typeof old.content !== "string")
     return null;
@@ -208,7 +220,8 @@ function migrateRecord(old, context = {}) {
   }
   const mode = MODE[old.mode] || "story";
   const createdAt = Number.isFinite(old.createdAt) ? old.createdAt : Date.now();
-  const characterId = str(old.host?.characterId, 200) || chatId && context.characterOf?.(chatId) || "";
+  const chatCharacters = chatId && context.chatCharacters?.(chatId) || [];
+  const characterIds = chatCharacters.length ? chatCharacters.map((c) => c.id) : str(old.host?.characterId, 200) ? [str(old.host.characterId, 200)] : [];
   const record = {
     id: old.id,
     mode,
@@ -219,8 +232,8 @@ function migrateRecord(old, context = {}) {
     request: "",
     chatId,
     chatName: "",
-    characterIds: characterId ? [characterId] : [],
-    characterNames: [],
+    characterIds,
+    characterNames: chatCharacters.map((c) => c.name || ""),
     content: old.content,
     status: "complete",
     createdAt,
@@ -239,9 +252,10 @@ function migrateRecord(old, context = {}) {
     if (plan) {
       const kinds = plan.subjects.map((x) => x.kind);
       const target = kinds.includes("character") && kinds.includes("user") ? "both" : kinds.includes("user") ? "user" : "character";
-      Object.assign(record, { facetPhase: "plan", facetPlan: plan, content: identityMarkdown(plan), title: ("\uC778\uBB3C \uCD94\uCD9C \xB7 " + plan.subjects.map((p) => p.name).filter(Boolean).join(" \xB7 ")).slice(0, 180), settings: { mode: "facet", facet: { target, relation: plan.relationship ? "original" : "none" }, personaIds: [] } });
-      if (target === "user")
-        record.characterIds = [];
+      const ids = identitySourceIds(plan, { characters: chatCharacters, personas: context.personas || [] });
+      Object.assign(record, { facetPhase: "plan", facetPlan: plan, content: identityMarkdown(plan), title: ("\uC778\uBB3C \uCD94\uCD9C \xB7 " + plan.subjects.map((p) => p.name).filter(Boolean).join(" \xB7 ")).slice(0, 180), settings: { mode: "facet", facet: { target, relation: plan.relationship ? "original" : "none" }, personaIds: ids.personaIds } });
+      if (ids.characterIds.length)
+        record.characterIds = ids.characterIds;
     } else
       Object.assign(record, { mode: "story", settings: { mode: "story" } });
   } else if (old.mode === "au") {
@@ -557,6 +571,61 @@ function createService(api, { now = () => Date.now() } = {}) {
   async function archiveFiles(u) {
     return (await api.userStorage.list("archive/", u)).filter((p) => p.endsWith(".json")).map((p) => p.startsWith("archive/") ? p : "archive/" + p);
   }
+  async function sourceContext(u, chatIds) {
+    const byChat = new Map;
+    for (const cid of new Set(chatIds.filter((x) => typeof x === "string" && x))) {
+      try {
+        const chat = await api.chats.get(cid, u);
+        const list = [];
+        for (const id2 of characterIdsOf(chat)) {
+          const c = await api.characters.get(id2, u).catch(() => null);
+          list.push({ id: id2, name: c?.name || "" });
+        }
+        byChat.set(cid, list);
+      } catch {
+        byChat.set(cid, []);
+      }
+    }
+    let personas2 = [];
+    try {
+      personas2 = (await allPages((o) => api.personas.list({ ...o, userId: u }))).map((p) => ({ id: p.id, name: p.name || "" }));
+    } catch {
+      personas2 = [];
+    }
+    return { chatCharacters: (cid) => byChat.get(cid) || [], personas: personas2 };
+  }
+  async function repairSources(u) {
+    if (await read(u, "repair-identity-sources-1.json"))
+      return null;
+    const files = await archiveFiles(u), targets = [];
+    for (const p of files) {
+      const r = await read(u, p);
+      if (r?.migratedFrom === "lumiverse-0.1" && r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan)
+        targets.push({ p, r });
+    }
+    const context = await sourceContext(u, targets.map((x) => x.r.chatId));
+    let fixed = 0;
+    for (const { p, r } of targets) {
+      const ids = identitySourceIds(r.facetPlan, { characters: context.chatCharacters(r.chatId), personas: context.personas });
+      const next = { ...r, settings: { ...r.settings || {} } };
+      let changed = false;
+      if (ids.characterIds.length && JSON.stringify(ids.characterIds) !== JSON.stringify(r.characterIds || [])) {
+        next.characterIds = ids.characterIds;
+        changed = true;
+      }
+      if (ids.personaIds.length && !(r.settings?.personaIds || []).length) {
+        next.settings.personaIds = ids.personaIds;
+        changed = true;
+      }
+      if (changed) {
+        await write(u, p, next);
+        fixed++;
+      }
+    }
+    const done = { at: now(), checked: targets.length, fixed };
+    await write(u, "repair-identity-sources-1.json", done);
+    return done;
+  }
   async function migrate(u) {
     const marker = await read(u, "migration-0.2.0.json");
     if (marker)
@@ -579,20 +648,8 @@ function createService(api, { now = () => Date.now() } = {}) {
       if (r?.id)
         existing.add(r.id);
     }
-    const chars = new Map;
-    const characterOf = (cid) => chars.get(cid) || "";
-    for (const r of rows) {
-      const cid = r?.host?.chatId;
-      if (typeof cid === "string" && !chars.has(cid)) {
-        try {
-          const chat = await api.chats.get(cid, u);
-          chars.set(cid, chat?.character_id || "");
-        } catch {
-          chars.set(cid, "");
-        }
-      }
-    }
-    const result = migrateRecords(rows, existing, { characterOf });
+    const context = await sourceContext(u, rows.map((r) => r?.host?.chatId));
+    const result = migrateRecords(rows, existing, context);
     for (const r of result.records)
       await write(u, fileOf(r.id), r);
     const done = { version: "0.2.0", at: now(), found: rows.length, migrated: result.records.length, skipped: result.skipped, failed: result.failed };
@@ -602,6 +659,8 @@ function createService(api, { now = () => Date.now() } = {}) {
   const PAGE_BYTES = 2000000;
   async function archiveList(u, { cursor = 0 } = {}) {
     const migration = cursor ? null : await migrate(u);
+    if (!cursor)
+      await repairSources(u);
     const files = (await archiveFiles(u)).sort();
     const records = [];
     let size = 0, i = Math.max(0, Number(cursor) || 0);

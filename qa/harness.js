@@ -8,6 +8,7 @@ import {install} from '../src/backend.js';
 const replies={
  story:'# 비 그친 뒤\n\n폐허의 지붕에서 빗물이 떨어졌다. 에이든은 칼을 내려놓고 처음으로 웃었다.\n\n"길을 잃은 게 아니야. 여기 오고 싶었어."\n\n유리는 대답 대신 수첩을 덮었다.',
  visual:'<!doctype html><html><head><title>에이든의 핸드폰</title><style>body{font-family:sans-serif;background:#111;color:#eee;margin:0;padding:16px}.msg{background:#2a2a35;border-radius:12px;padding:10px;margin:8px 0}</style></head><body><h1>에이든의 핸드폰</h1><div class="msg">유리: 오늘 어디야?</div><div class="msg">에이든: 폐허. 금방 갈게.</div></body></html>',
+ identity:JSON.stringify({schema:'sidestory-identity-v1',subjects:[{kind:'character',name:'아드리안 폰 아이젠베르크',gender:'남성',age:'33세',relative_age:'상대보다 5세 연하',alignment:'질서',background_context:'원본에 명시 없음',hair:'은발',eyes:'청색',height:'큰 편',build:'단단함',design:'단정함',temperament:['엄격함'],speech:'존댓말',interpersonal:['거리를 둠'],sheet_layout:['이름']},{kind:'user',name:'정수빈',gender:'여성',age:'28세',relative_age:'상대보다 5세 연상',alignment:'중립',background_context:'원본에 명시 없음',hair:'흑발',eyes:'갈색',height:'보통',build:'보통',design:'차분함',temperament:['꼼꼼함'],speech:'반말',interpersonal:['솔직함'],sheet_layout:['이름']}],relationship:'상관과 서기',counterpart:null}),
  speak:'<sideb-response><request>민트초코 vs 하와이안 피자</request><spoken>…민트초코. 이유는 묻지 마.</spoken><inner>사실 둘 다 먹어 본 적이 없다.</inner></sideb-response>',
 };
 window.qaReply='story';
@@ -33,8 +34,10 @@ const ctx={
  state:{get:k=>state[k],subscribe(k,fn){if(!subs.has(k))subs.set(k,new Set());subs.get(k).add(fn);return()=>subs.get(k).delete(fn);}},
  events:{on(){return()=>{};}},
 };
-const dispose=setup(ctx);
-window.qa={api,ctx,dispose,
+let dispose=setup(ctx);
+window.qa={api,ctx,get dispose(){return dispose;},
+ // Simulates closing and reopening Lumiverse: the extension is set up again on the same server data.
+ remount(){dispose();document.getElementById('tab-host').replaceChildren();dispose=setup(ctx);},
  shadow:()=>document.getElementById('st-sidestory-root')?.shadowRoot,
  setState(k,v){state[k]=v;for(const fn of subs.get(k)||[])fn(v);},
  activate(){for(const fn of activators)fn();},

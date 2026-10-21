@@ -6,7 +6,7 @@ import {SECONDARY_SELECTOR} from '../src/lumiverse/css-floor.mjs';
 const VIEWPORTS=[{w:360,h:460,touch:true},{w:390,h:844,touch:true},{w:1280,h:800,touch:false}];
 const shotDir=process.env.QA_SHOT_DIR||'qa/screens/v020';
 // Text that counts as secondary/meta (>=13px); everything else is primary (>=15px).
-const SECONDARY='small,.hint,.label,.section-label,.page-meta,#count,.thread-meta,.kind,.val,.note,.bar-text p,.bar-note,.speak-index,.speak-news-live,.speak-inner-hint,.tr-n,.chip small,.hrow small,.card-meta,.meta,time,.side-toast';
+const SECONDARY='small,.hint,.facet-source-heading>span,.label,.section-label,.page-meta,#count,.thread-meta,.kind,.val,.note,.bar-text p,.bar-note,.speak-index,.speak-news-live,.speak-inner-hint,.tr-n,.chip small,.hrow small,.card-meta,.meta,time,.side-toast';
 // Class words the CSS floor treats as secondary (src/lumiverse/css-floor.mjs).
 const SECONDARY_WORDS=SECONDARY_SELECTOR.source;
 // Things allowed to stay small, with the reason (reported, not hidden).
@@ -80,6 +80,19 @@ try{
   await step('settings',async()=>{await click('[data-page="settings"]');await until(`!!${S}.querySelector('.settings-home')`);await measure('settings');});
   await step('archive-full',async()=>{await click('[data-page="archive"]');await sleep(400);await measure('archive-full');});
   await step('identity reader scrolls',async()=>{await click('[data-open="5d1c2a10-0000-4000-8000-000000000002"]');await until(`!!${S}.querySelector('#reader .identity-preview')`);await sleep(300);const [x,y]=await evaluate(`(()=>{const r=${S}.getElementById('reader').getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)];})()`);await call('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});for(let i=1;i<=10;i++)await call('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y-12*i}]});await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await sleep(400);const top=await evaluate(`${S}.getElementById('reader').scrollTop`);if(!(top>0))throw Error('identity reader did not scroll on touch');await measure('identity');await click('[data-page="archive"]');});
+  await step('identity sources (group chat + persona)',async()=>{
+   const G='0c0c0c0c-4444-4f00-8000-00000000000a';
+   const sources=()=>evaluate(`[...${S}.querySelectorAll('.facet-source-person')].map(e=>e.querySelector('.facet-source-heading')?.textContent.trim()||'')`);
+   const openAU=async()=>{await click('[data-pane="compose"]');await click('[data-mode="facet"]');await click('[data-facet-work="au"]');await sleep(200);if(await evaluate(`${S}.querySelector('[data-facet-choice="target"][data-value="both"]')?.getAttribute('aria-pressed')!=='true'`))await click('[data-facet-choice="target"][data-value="both"]');await sleep(300);};
+   const check=async label=>{const s=await sources();if(s.length!==2||s.some(x=>/미추출/.test(x))||!s.some(x=>/아드리안/.test(x))||!s.some(x=>/정수빈/.test(x)))throw Error(label+': '+JSON.stringify(s));};
+   await evaluate(`qa.setState('persona.activeId','9a8b7c6d-3333-4e5f-8a9b-000000000003');qa.setState('chat.active',{chatId:'${G}'})`);await sleep(1000);
+   await openAU();const before=await sources();if(!before.every(x=>/미추출/.test(x)))throw Error('expected 미추출 before extraction: '+JSON.stringify(before));
+   await click('[data-facet-work="identity"]');await click('[data-facet-extract-target="both"]');await evaluate('window.qaReply="identity"');await click('#generate');await until(`!!${S}.querySelector('.identity-preview')`,10000,'identity result');await click('#facet-use-identity');await sleep(500);
+   await openAU();await check('after extraction');await measure('identity-sources');
+   await evaluate(`qa.setState('chat.active',{chatId:'chat-1'})`);await sleep(900);await evaluate(`qa.setState('chat.active',{chatId:'${G}'})`);await sleep(1000);await openAU();await check('after chat switch');
+   await evaluate('qa.remount()');await until(`!!${S}?.querySelector('.window:not([hidden])')`,10000,'remount');await sleep(900);await openAU();await check('after reopen');
+   await evaluate(`qa.setState('chat.active',{chatId:'chat-1'})`);await sleep(900);await click('[data-page="archive"]');
+  });
   await step('chat switch',async()=>{await evaluate(`qa.setState('chat.active',{chatId:'chat-2'})`);await sleep(900);const open=await evaluate(`!!${S}.querySelector('.window:not([hidden])')`);if(!open)throw Error('app not reopened after chat switch');await measure('chat-switch');});
  }
  await writeFile('qa/layout-report.json',JSON.stringify(report,null,2));

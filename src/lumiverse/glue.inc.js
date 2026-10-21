@@ -22,3 +22,14 @@ stHost.mount(host,lumiverseOpen);
 root.addEventListener('click',e=>{const b=e.target.closest?.('#lv-preview');if(!b||b.disabled||busy)return;stHost.requestPreview();run(s.mode==='facet'&&s.facetWorkspace==='identity'?'facet-extract':'new').catch(x=>say(x.message,true)).finally(()=>{if(stHost.takePreviewShown()&&alive){const last=requestCache.at(-1);if(last){last.status='미리보기 · 보내지 않음';delete last.error;cacheSave();}page='settings';settingsTab='requests';sheet='';render();}});});
 // 7. Phone reading size: upstream's default reading size is 14px. When the user never chose one, start at 16px.
 if(saved?.sideStory?.viewerSize===undefined){s.viewerSize=16;}
+// 8. Saved identity extractions are looked up by character/persona id. Extractions that have no id for that
+//    side (ST backups, records from other hosts) still show up when the extracted name matches the current
+//    character/persona, instead of reading "미추출".
+{const upstreamSources=facetSources,norm=v=>String(v??'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+ facetSources=function(kind){
+  const rows=upstreamSources(kind);if(rows.length)return rows;
+  const id=kind==='character'?(s.characterIds||[])[0]:(s.personaIds||[])[0];
+  const card=kind==='character'?characters.find(c=>c.id===id):personas.find(p=>'persona:'+p.id===id||p.id===id);
+  const want=card?norm(H.character(card).name):'';if(!want)return rows;
+  return records.filter(r=>r.mode==='facet'&&r.facetPhase==='plan'&&r.facetPlan?.schema===SideIdentity.SCHEMA&&!(kind==='character'?(r.characterIds||[])[0]:(r.settings?.personaIds||[])[0])&&r.facetPlan.subjects?.some(x=>x.kind===kind&&norm(x.name)===want)).sort((a,b)=>(b.editedAt||b.createdAt||0)-(a.editedAt||a.createdAt||0));
+ };}

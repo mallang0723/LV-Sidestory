@@ -8691,6 +8691,20 @@ ${item.inner}` : ""].filter(Boolean).join(`
   if (saved?.sideStory?.viewerSize === undefined) {
     s.viewerSize = 16;
   }
+  {
+    const upstreamSources = facetSources, norm = (v) => String(v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    facetSources = function(kind) {
+      const rows = upstreamSources(kind);
+      if (rows.length)
+        return rows;
+      const id = kind === "character" ? (s.characterIds || [])[0] : (s.personaIds || [])[0];
+      const card = kind === "character" ? characters.find((c) => c.id === id) : personas.find((p) => "persona:" + p.id === id || p.id === id);
+      const want = card ? norm(H.character(card).name) : "";
+      if (!want)
+        return rows;
+      return records.filter((r) => r.mode === "facet" && r.facetPhase === "plan" && r.facetPlan?.schema === SideIdentity.SCHEMA && !(kind === "character" ? (r.characterIds || [])[0] : (r.settings?.personaIds || [])[0]) && r.facetPlan.subjects?.some((x) => x.kind === kind && norm(x.name) === want)).sort((a, b) => (b.editedAt || b.createdAt || 0) - (a.editedAt || a.createdAt || 0));
+    };
+  }
 }
 
 // src/lumiverse/rpc.js

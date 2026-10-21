@@ -45,8 +45,24 @@ function translationView(record,mode){
  return {content:parts.map((_,i)=>byId.get('s'+i)).join('\n\n'),language:str(t.language,120),batches:1,inputTokens:0,outputTokens:0,createdAt:Number(record.createdAt)||Date.now()};
 }
 
+const norm=s=>String(s??'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
 /**
- * Converts one 0.1.x record. `context.characterOf(chatId)` returns the chat's character id when known.
+ * Upstream finds saved identity extractions ("핵심정보") by ids, not names: the character by
+ * record.characterIds[0] (the chat's character list, group order) and the persona by
+ * record.settings.personaIds[0] ('persona:<id>'). 0.1.x stored neither, so they are rebuilt from the
+ * chat's characters and the persona whose name matches the extracted user subject.
+ */
+export function identitySourceIds(plan,{characters=[],personas=[]}={}){
+ const characterIds=characters.map(c=>c?.id).filter(x=>typeof x==='string'&&x);
+ const user=(plan?.subjects||[]).find(x=>x?.kind==='user');
+ let personaIds=[];
+ if(user){const hits=personas.filter(p=>p&&norm(p.name)===norm(user.name));if(hits.length===1)personaIds=['persona:'+hits[0].id];}
+ return {characterIds,personaIds};
+}
+
+/**
+ * Converts one 0.1.x record. `context.chatCharacters(chatId)` returns the chat's characters
+ * ([{id,name}], group order) and `context.personas` the user's personas, when known.
  * Returns null for anything that is not a 0.1.x record.
  */
 export function migrateRecord(old,context={}){
@@ -59,9 +75,10 @@ export function migrateRecord(old,context={}){
  }
  const mode=MODE[old.mode]||'story';
  const createdAt=Number.isFinite(old.createdAt)?old.createdAt:Date.now();
- const characterId=str(old.host?.characterId,200)||(chatId&&context.characterOf?.(chatId))||'';
+ const chatCharacters=(chatId&&context.chatCharacters?.(chatId))||[];
+ const characterIds=chatCharacters.length?chatCharacters.map(c=>c.id):str(old.host?.characterId,200)?[str(old.host.characterId,200)]:[];
  const record={id:old.id,mode,title:'',action:old.parentId&&old.requestId==null&&old.mode!=='au'?'edit':'new',seriesId:null,seriesTitle:null,request:'',chatId,chatName:'',
-  characterIds:characterId?[characterId]:[],characterNames:[],content:old.content,status:'complete',createdAt,favorite:old.favorite===true,settings:{mode},
+  characterIds,characterNames:chatCharacters.map(c=>c.name||''),content:old.content,status:'complete',createdAt,favorite:old.favorite===true,settings:{mode},
   parentId:null,folderId:typeof old.folderId==='string'?old.folderId:null,tags:Array.isArray(old.tags)?old.tags.filter(t=>typeof t==='string').slice(0,24):[],
   migratedFrom:'lumiverse-0.1',lvLegacy:{id:old.id,revision:old.revision??null,mode:old.mode,host:old.host||{},requestId:old.requestId??null,sourceVersion:old.sourceVersion??null,parentId:old.parentId??null,seriesId:old.seriesId??null,needsRemap:!!old.needsRemap,identityApproved:old.identityApproved??null}};
  if(record.action==='edit')record.parentId=old.parentId;
@@ -69,8 +86,9 @@ export function migrateRecord(old,context={}){
   const plan=parsePlan(old);
   if(plan){
    const kinds=plan.subjects.map(x=>x.kind);const target=kinds.includes('character')&&kinds.includes('user')?'both':kinds.includes('user')?'user':'character';
-   Object.assign(record,{facetPhase:'plan',facetPlan:plan,content:identityMarkdown(plan),title:('인물 추출 · '+plan.subjects.map(p=>p.name).filter(Boolean).join(' · ')).slice(0,180),settings:{mode:'facet',facet:{target,relation:plan.relationship?'original':'none'},personaIds:[]}});
-   if(target==='user')record.characterIds=[];
+   const ids=identitySourceIds(plan,{characters:chatCharacters,personas:context.personas||[]});
+   Object.assign(record,{facetPhase:'plan',facetPlan:plan,content:identityMarkdown(plan),title:('인물 추출 · '+plan.subjects.map(p=>p.name).filter(Boolean).join(' · ')).slice(0,180),settings:{mode:'facet',facet:{target,relation:plan.relationship?'original':'none'},personaIds:ids.personaIds}});
+   if(ids.characterIds.length)record.characterIds=ids.characterIds;
   }else Object.assign(record,{mode:'story',settings:{mode:'story'}});
  }else if(old.mode==='au'){
   Object.assign(record,{facetPhase:'written',settings:{mode:'facet',facet:{target:'character'}}});

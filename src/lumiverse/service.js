@@ -2,7 +2,7 @@
 // stHost.request('/chats/…') calls into these operations; everything that needs a Spindle permission
 // happens here. Lumiverse data comes back in the shapes upstream's st-host.js produces.
 import {shapeHostPrompt,fillNames,eligibleHistory} from './assembly.js';
-import {migrateRecords} from './migrate.js';
+import {migrateRecords,identitySourceIds} from './migrate.js';
 
 export const CURRENT='st-current'; // upstream's id for "use the host's own prompt assembly"
 const PAGE=100;
@@ -148,21 +148,45 @@ export function createService(api,{now=()=>Date.now()}={}){
  const read=(u,p)=>api.userStorage.getJson(p,{userId:u,fallback:null});
  const write=(u,p,v)=>api.userStorage.setJson(p,v,{userId:u});
  async function archiveFiles(u){return (await api.userStorage.list('archive/',u)).filter(p=>p.endsWith('.json')).map(p=>p.startsWith('archive/')?p:'archive/'+p);}
+ /** Characters per chat (group order, like upstream's record.characterIds) and the user's personas. */
+ async function sourceContext(u,chatIds){
+  const byChat=new Map();
+  for(const cid of new Set(chatIds.filter(x=>typeof x==='string'&&x))){
+   try{const chat=await api.chats.get(cid,u);const list=[];for(const id of characterIdsOf(chat)){const c=await api.characters.get(id,u).catch(()=>null);list.push({id,name:c?.name||''});}byChat.set(cid,list);}catch{byChat.set(cid,[]);}
+  }
+  let personas=[];try{personas=(await allPages(o=>api.personas.list({...o,userId:u}))).map(p=>({id:p.id,name:p.name||''}));}catch{personas=[];}
+  return {chatCharacters:cid=>byChat.get(cid)||[],personas};
+ }
+ // 0.2.0 builds before this fix migrated identity extractions without the ids upstream looks them up by
+ // (persona never, group chats under the greeting character). Re-attach them once.
+ async function repairSources(u){
+  if(await read(u,'repair-identity-sources-1.json'))return null;
+  const files=await archiveFiles(u),targets=[];
+  for(const p of files){const r=await read(u,p);if(r?.migratedFrom==='lumiverse-0.1'&&r.mode==='facet'&&r.facetPhase==='plan'&&r.facetPlan)targets.push({p,r});}
+  const context=await sourceContext(u,targets.map(x=>x.r.chatId));let fixed=0;
+  for(const {p,r} of targets){
+   const ids=identitySourceIds(r.facetPlan,{characters:context.chatCharacters(r.chatId),personas:context.personas});
+   const next={...r,settings:{...(r.settings||{})}};let changed=false;
+   if(ids.characterIds.length&&JSON.stringify(ids.characterIds)!==JSON.stringify(r.characterIds||[])){next.characterIds=ids.characterIds;changed=true;}
+   if(ids.personaIds.length&&!(r.settings?.personaIds||[]).length){next.settings.personaIds=ids.personaIds;changed=true;}
+   if(changed){await write(u,p,next);fixed++;}
+  }
+  const done={at:now(),checked:targets.length,fixed};await write(u,'repair-identity-sources-1.json',done);return done;
+ }
  async function migrate(u){
   const marker=await read(u,'migration-0.2.0.json');if(marker)return marker;
   let old=[];try{old=(await api.userStorage.list('records/',u)).filter(p=>/^[\w-]+\.json$/.test(p.replace(/^records\//,'')));}catch{old=[];}
   const rows=[];for(const p of old){const r=await read(u,p.startsWith('records/')?p:'records/'+p);if(r)rows.push(r);}
   const existing=new Set();for(const p of await archiveFiles(u)){const r=await read(u,p);if(r?.id)existing.add(r.id);}
-  const chars=new Map();const characterOf=cid=>chars.get(cid)||'';
-  for(const r of rows){const cid=r?.host?.chatId;if(typeof cid==='string'&&!chars.has(cid)){try{const chat=await api.chats.get(cid,u);chars.set(cid,chat?.character_id||'');}catch{chars.set(cid,'');}}}
-  const result=migrateRecords(rows,existing,{characterOf});
+  const context=await sourceContext(u,rows.map(r=>r?.host?.chatId));
+  const result=migrateRecords(rows,existing,context);
   for(const r of result.records)await write(u,fileOf(r.id),r);
   const done={version:'0.2.0',at:now(),found:rows.length,migrated:result.records.length,skipped:result.skipped,failed:result.failed};
   await write(u,'migration-0.2.0.json',done);return done;
  }
  const PAGE_BYTES=2_000_000;
  async function archiveList(u,{cursor=0}={}){
-  const migration=cursor?null:await migrate(u);
+  const migration=cursor?null:await migrate(u);if(!cursor)await repairSources(u);
   const files=(await archiveFiles(u)).sort();const records=[];let size=0,i=Math.max(0,Number(cursor)||0);
   for(;i<files.length;i++){const r=await read(u,files[i]);if(!r?.id)continue;const n=JSON.stringify(r).length;if(records.length&&size+n>PAGE_BYTES)break;records.push(r);size+=n;}
   return {records,next:i<files.length?i:null,migration};
