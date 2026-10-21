@@ -27,7 +27,7 @@ UI 후보는 원작 0.9.8의 작업 폴더·작성/결과·참고 자료·보관
 
 - `npm test`: 공개 서비스 경로와 합성 host/model API를 사용한 회귀 검사.
 - `npm run build`: backend/frontend Bun 번들 및 설치 ZIP 생성. Bun이 PATH에 없으면 `BUN_BIN`으로 지정합니다.
-- `npm run qa:browser`: localhost HTTP, 390×844 CDP viewport의 headless Chromium harness. console/page/Log 오류를 수집하고 종료 시 서버·브라우저를 정리합니다. 일반 브라우저 탭은 자동으로 열지 않습니다. Chromium 경로는 `CHROMIUM_BIN`으로 지정합니다.
+- `npm run qa:browser`: localhost HTTP, 390×844 CDP viewport의 headless Chromium harness. console/page/Log 오류를 수집하고 종료 시 서버·브라우저를 정리합니다. 이어서 `qa/layout.html` 합성 서랍(호스트 제목줄 48px 가정)을 360×300(키보드가 열린 360×460 대용)·360×460·360×640·390×844(터치 에뮬레이션)과 1280×800에서 열어 작성·참고 자료·미리보기·결과·보관함·설정 화면마다 가로 넘침, 글자 크기(본문·입력 15px, 그 밖 14px 이상), 누름 영역 44px, 작성 화면에서 미리보기·생성·취소 버튼이 스크롤 없이 보이는지를 검사하고 `QA_SHOT_DIR`(기본 `qa/screens/current`, git 제외)에 스크린샷과 `qa/layout-report.json`을 남깁니다. 일반 브라우저 탭은 자동으로 열지 않습니다. Chromium 경로는 `CHROMIUM_BIN`으로 지정합니다.
 
 private 실행 로그와 호스트 자료는 설치 ZIP에 포함하지 않습니다. 위 실제 설치 결과는 2026-10-14 후보의 관측이며 합성 검사만으로 실제 호스트 통합 성공을 주장하지 않습니다.
 

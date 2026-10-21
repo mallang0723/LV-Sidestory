@@ -14,7 +14,7 @@ Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보�
 
 편집은 자식 결과를 만듭니다. 제거 전 전체 JSON을 내보내세요. schema 1 및 ST-Sidestory version 1/2 백업을 제한된 크기로 검증·변환합니다. 원본 tags/번역/lineage는 보존하며 상세 제한은 QA.md에 기록합니다. 가져온 호스트 ID는 재매핑 확인 전 사용하지 않습니다. HTML은 제한된 정적 태그만 표시하며 원본 스크립트를 실행하지 않습니다.
 
-`npm test`, `npm run build`, `npm run qa:browser`로 검증합니다. Bun 경로는 `BUN_BIN`, Chromium 경로는 `CHROMIUM_BIN`으로 지정할 수 있습니다. ZIP에는 실행물·소스·vendor·출처·문서·테스트·합성 브라우저 harness를 포함합니다. 실행기는 headless Chromium만 사용하며 일반 브라우저 탭을 자동으로 열지 않습니다.
+`npm test`, `npm run build`, `npm run qa:browser`로 검증합니다. Bun 경로는 `BUN_BIN`, Chromium 경로는 `CHROMIUM_BIN`으로 지정할 수 있습니다. ZIP에는 실행물·소스·vendor·출처·문서·테스트·합성 브라우저 harness(기능·작은 화면 배치)를 포함합니다. 실행기는 headless Chromium만 사용하며 일반 브라우저 탭을 자동으로 열지 않습니다.
 
 소스 저장소 및 배포 안내: https://github.com/mallang0723/LV-Sidestory
 

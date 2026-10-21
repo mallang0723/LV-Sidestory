@@ -17,10 +17,11 @@ export function createWorkspace(root){
  const setPane=pane=>{app.dataset.pane=pane;for(const b of paneNav.children)b.setAttribute('aria-pressed',String(b.dataset.pane===pane));};
  const chooseFamily=key=>{family=key;if(modeInput){const modes=key==='inner'?['speak','write']:key==='facet'?['identity','au']:['analysis','story','html'];if(!modes.includes(modeInput.value)){modeInput.value=modes[0];modeInput.dispatchEvent(new Event('input',{bubbles:true}));}syncMode();}setPage('create');setPane('compose');};
  for(const [key,label] of folders){const b=node('button',label,nav);b.type='button';navButtons[key]=b;b.onclick=()=>{if(['archive','settings'].includes(key)){setPage(key);navigate(key);}else chooseFamily(key);};}
+ // Compose/result switch sits in the header so phones can merge it into the folder row.
+ const paneNav=node('nav','',header,'ss-pane-nav');paneNav.setAttribute('aria-label','작성 및 결과');
+ for(const [key,label] of [['compose','작성'],['result','결과']]){const b=node('button',label,paneNav);b.type='button';b.dataset.pane=key;b.onclick=()=>setPane(key);}
  const content=node('div','',app,'ss-content');
  panels.create=node('div','',content,'ss-create');
- const paneNav=node('nav','',panels.create,'ss-pane-nav');paneNav.setAttribute('aria-label','작성 및 결과');
- for(const [key,label] of [['compose','작성'],['result','결과']]){const b=node('button',label,paneNav);b.type='button';b.dataset.pane=key;b.onclick=()=>setPane(key);}
  const layout=node('div','',panels.create,'ss-layout');
  const composer=node('aside','',layout,'ss-composer');composer.setAttribute('aria-label','새로운 작업');
  const scroll=node('div','',composer,'ss-compose-scroll');
@@ -62,7 +63,7 @@ export function createWorkspace(root){
  const search=node('input','',panels.archive);search.type='search';search.placeholder='제목 · 내용으로 찾기';search.setAttribute('aria-label','보관함 검색');
  const archive=node('div','',panels.archive,'ss-archive');const archiveEmpty=node('p','아직 보관한 결과가 없습니다.',panels.archive,'ss-hint');
  const backup=detail('백업 · 가져오기',panels.archive);
- panels.settings=node('section','',content,'ss-page');node('h2','설정',panels.settings);node('p','연결 정보와 권한은 루미버스에서 관리합니다.',panels.settings,'ss-hint');
+ panels.settings=node('section','',content,'ss-page');node('h2','설정',panels.settings);node('p','연결 정보와 권한은 루미버스에서 관리합니다.',panels.settings,'ss-hint');node('p','Side Story · 루미버스용 · 비공식',panels.settings,'ss-hint ss-about');
  const settings=detail('생성 한도',panels.settings);settings.parentElement.open=true;
  node('p','프리셋이 없으면 선택한 자료만 전달하며 본편 preset·Cortex·자동 World Info는 포함하지 않습니다. 프리셋을 고르면 그 블록의 매크로가 호스트 자료를 펼칠 수 있고 임베딩 요청이 생길 수 있으니 미리보기의 주의 사항을 확인하세요.',settings,'ss-hint');
  const status=node('p','자료를 불러오세요.',app,'ss-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');

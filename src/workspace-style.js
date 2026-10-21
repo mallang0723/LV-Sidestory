@@ -1,4 +1,19 @@
 // Original workspace hierarchy, scoped to the extension root. No global host CSS.
+// Phone rules: readable sizes and 44px targets apply to narrow containers (<=400px) and to any
+// touch screen in single-pane mode; the short-height rules (<=560px) only reclaim vertical space.
+const touchRules=`
+/* container queries cannot style .ss-app itself, so the base size goes on its children */
+.ss-app>*{font-size:15px;line-height:1.55}.ss-app small,.ss-hint{font-size:14px}
+.ss-app button{min-height:44px;padding:8px 12px}.ss-app :is(input,select,textarea){font-size:16px}.ss-app :is(input:not([type=checkbox]),select){min-height:44px}.ss-app input[type=checkbox]{width:22px;height:22px;min-width:22px;min-height:0}
+.ss-app input[type=file]{font-size:15px}.ss-field>span{font-size:14px}.ss-section-heading h2{font-size:16px}.ss-section-heading small{font-size:14px}
+.ss-app .ss-folders button{font-size:15px;min-height:44px;padding:8px 10px}.ss-app .ss-pane-nav button{font-size:15px;min-height:44px}
+.ss-app .ss-mode-picker button{font-size:15px;min-height:44px;padding:6px 4px}.ss-app .ss-segmented button{font-size:15px}.ss-app .ss-inline-actions button{font-size:14px;min-height:44px;padding:8px 12px}
+.ss-details>summary{font-size:15px;min-height:44px;padding:10px 0}.ss-check{display:flex;align-items:center;flex-direction:row-reverse;justify-content:flex-end;gap:10px;min-height:44px}
+.ss-generate>.ss-hint{font-size:14px}.ss-reader-heading h2{font-size:17px}.ss-reader-heading small{font-size:14px}
+.ss-eyebrow{font-size:14px;letter-spacing:1.6px}.ss-empty h3{font-size:26px}.ss-empty p{font-size:15px}.ss-empty small{font-size:14px}
+.ss-prose{font-size:16px;line-height:1.85}.ss-reader textarea{font-size:16px}.ss-app pre{font-size:14px;max-height:none}
+.ss-archive-card small{font-size:14px}.ss-archive-card strong{font-size:16px}.ss-archive-card>span{font-size:15px}.ss-status{font-size:14px;line-height:1.45}
+`;
 export const workspaceStyles=`
 .ss-app{--ss-bg:var(--lumiverse-bg,#181622);--ss-paper:var(--lumiverse-bg-elevated,#211e2c);--ss-ink:var(--lumiverse-text,#eeeaf5);--ss-muted:var(--lumiverse-text-muted,#aba5ba);--ss-line:var(--lumiverse-border,rgba(174,148,218,.22));--ss-accent:var(--lumiverse-primary,#9370db);--ss-tint:var(--lumiverse-primary-light,rgba(147,112,219,.12));--ss-input:var(--lumiverse-input-bg,rgba(0,0,0,.15));font:13px/1.6 var(--lumiverse-font-family,system-ui,sans-serif);color:var(--ss-ink);background:var(--ss-bg);height:100%;min-height:0;display:flex;flex-direction:column;container-type:inline-size;overflow:hidden;color-scheme:normal}
 .ss-app *{box-sizing:border-box;min-width:0}.ss-app [hidden]{display:none!important}
@@ -33,8 +48,21 @@ export const workspaceStyles=`
 .ss-app [data-ui=loom-hint]:not([hidden]){display:block;margin:0 0 12px}.ss-raw{margin:4px 0 14px}.ss-raw-panel{border:1px solid var(--ss-line);border-radius:8px;padding:10px;margin-top:4px}.ss-raw-panel[hidden],.ss-raw-panel [hidden]{display:none}.ss-segmented{display:flex;gap:3px;background:var(--ss-input);border:1px solid var(--ss-line);border-radius:8px;padding:3px;margin-bottom:10px}.ss-app .ss-segmented button{flex:1;border:0;background:transparent;min-height:44px;font-size:12px;color:var(--ss-muted)}.ss-app .ss-segmented button[aria-pressed=true]{background:var(--ss-paper);color:var(--ss-ink);box-shadow:0 1px 3px #0002}.ss-range{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ss-app .ss-raw-panel input{min-height:44px}.ss-raw-panel .ss-field{margin-bottom:8px}.ss-raw-panel>.ss-hint{margin:0;white-space:pre-line}
 .ss-page{height:100%;overflow:auto;padding:22px 20px;scrollbar-width:thin}.ss-page>h2{font-size:20px;margin-bottom:7px}.ss-page>.ss-hint{margin-bottom:19px}.ss-page>.ss-inline-actions{margin-bottom:12px}.ss-page>input[type=search]{margin-bottom:14px}
 .ss-archive{display:grid;gap:10px}.ss-app .ss-archive-card{display:flex;flex-direction:column;gap:7px;width:100%;padding:15px 16px;text-align:left;background:var(--ss-paper);border:1px solid var(--ss-line);border-radius:9px;overflow-wrap:anywhere}.ss-archive-card small{font-size:10px}.ss-archive-card strong{font-size:13px;font-weight:650}.ss-archive-card>span{font-size:12px;line-height:1.7;color:var(--ss-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ss-about{display:none}.ss-check{display:block}
 .ss-status{flex:none;padding:8px 16px;border-top:1px solid var(--ss-line);font-size:10px;color:var(--ss-muted);line-height:1.6;max-height:75px;overflow:auto;overflow-wrap:anywhere;background:var(--ss-paper)}
-@container (max-width:679px){.ss-layout{display:flex;flex-direction:column}.ss-pane-nav{display:flex}.ss-composer{flex:1;border-right:0}.ss-app[data-pane=compose] .ss-reader{display:none}.ss-app[data-pane=result] .ss-composer{display:none}.ss-app[data-pane=result] .ss-reader{flex:1}.ss-topbar{padding:11px 12px 0}.ss-brand{margin-bottom:10px}.ss-app .ss-folders button{padding:8px 8px;font-size:11px}.ss-compose-scroll{padding:18px 15px}.ss-reader{padding:17px 16px 24px}.ss-generate{padding:12px 15px}.ss-empty{padding-top:38px}.ss-reader-heading{flex-wrap:wrap}.ss-page{padding:20px 16px}}
+@container (max-width:679px){.ss-layout{display:flex;flex-direction:column}.ss-pane-nav{display:flex}.ss-composer{flex:1;border-right:0}.ss-app[data-pane=compose] .ss-reader{display:none}.ss-app[data-pane=result] .ss-composer{display:none}.ss-app[data-pane=result] .ss-reader{flex:1}.ss-topbar{padding:0 12px}.ss-brand{margin-bottom:10px}.ss-app .ss-folders button{padding:8px 8px;font-size:11px}.ss-compose-scroll{padding:18px 15px}.ss-reader{padding:17px 16px 24px}.ss-generate{padding:12px 15px}.ss-empty{padding-top:38px}.ss-reader-heading{flex-wrap:wrap}.ss-page{padding:20px 16px}}
 @container (max-width:679px){.ss-app[data-pane=result]:not([data-preview-active=true]) .ss-generate{display:none}}
-@container (max-width:330px){.ss-brand span{display:none}.ss-app .ss-folders button{padding:8px 5px}.ss-app .ss-folders{gap:1px}}
+@container (max-width:679px){.ss-brand{display:none}.ss-about{display:block}.ss-topbar{display:flex;flex-direction:column}.ss-folders{margin:0;padding:4px 0;gap:2px}.ss-app .ss-folders button{border:0;border-radius:8px;background:transparent;flex:1 0 auto}.ss-app .ss-folders button[aria-pressed=true]{background:var(--ss-tint);color:var(--lumiverse-primary-text,var(--ss-ink));box-shadow:inset 0 -2px 0 var(--ss-accent)}.ss-pane-nav{border-bottom:0;border-top:1px solid var(--ss-line);padding:4px 0}.ss-app:not([data-page=create]) .ss-pane-nav{display:none}}
+@container (max-width:330px){.ss-app .ss-folders button{padding:8px 5px}.ss-app .ss-folders{gap:1px}}
+@container (max-width:400px){${touchRules}.ss-topbar{padding:0 6px}.ss-compose-scroll{padding:14px 12px}.ss-reader{padding:14px 12px 20px}.ss-generate{padding:10px 12px}.ss-page{padding:16px 12px}}
+@media (pointer:coarse){@container (max-width:679px){${touchRules}}}
+@media (max-height:560px){@container (max-width:679px){
+.ss-topbar{flex-direction:row;align-items:center;gap:4px}.ss-folders{flex:1;gap:0}.ss-app .ss-folders button{padding:8px 5px}.ss-pane-nav{flex:none;border-top:0;padding:0}
+.ss-app .ss-pane-nav button[aria-pressed=true]{display:none}.ss-app .ss-pane-nav button{flex:none;padding:8px 6px;white-space:nowrap;background:var(--ss-input);border:1px solid var(--ss-line)}.ss-app .ss-pane-nav button[data-pane=result]::after{content:' ›'}.ss-app .ss-pane-nav button[data-pane=compose]::before{content:'‹ '}
+.ss-section-heading{display:none}.ss-mode-picker{margin-bottom:12px}.ss-field textarea[aria-label=요청]{min-height:96px}
+.ss-generate{padding:8px 12px}.ss-generate>.ss-hint{display:none}.ss-generate-actions{grid-template-columns:1fr 1fr auto;gap:6px}.ss-app .ss-generate-actions button:first-child{grid-column:auto}.ss-app .ss-generate-actions button{white-space:normal;word-break:keep-all;line-height:1.25;padding:4px 8px}
+.ss-status{padding:5px 12px 0;border-bottom:5px solid transparent;max-height:calc(2.9em + 10px);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.ss-empty{min-height:0;padding:18px 8px 12px}.ss-empty h3{font-size:22px;margin:8px 0 10px}.ss-empty p{margin-bottom:12px}
+}}
+@media (max-height:420px){@container (max-width:679px){.ss-app:has(.ss-compose-scroll :is(textarea,input:not([type=checkbox])):focus) .ss-topbar{display:none}.ss-app:has(.ss-compose-scroll :is(textarea,input:not([type=checkbox])):focus) .ss-status{display:block;height:0;padding:0;border:0}.ss-status{-webkit-line-clamp:1;max-height:calc(1.45em + 10px)}}}
 `;
