@@ -32,3 +32,10 @@ test('the preset feature is gone',()=>{
  assert.ok(!/presets\.(list|get)\(/.test(backend));
  assert.ok(!existsSync(new URL('../src/preset-scope.js',import.meta.url)));
 });
+
+test('phone floor only raises small upstream sizes',async()=>{
+ const {floorRules}=await import('../src/lumiverse/css-floor.mjs');
+ const out=floorRules('.a{font-size:11px}.hint{font-size:11.5px}.big{font-size:22px}.x small{font:12px/1.4 sans-serif}.ok{font-size:15px}');
+ assert.equal(out,'.a{font-size:15px}\n.hint{font-size:13px}\n.x small{font-size:13px}');
+ assert.ok(read('src/generated/side-story-app.js').toString().includes('@container sidestory (max-width:680px){'));
+});

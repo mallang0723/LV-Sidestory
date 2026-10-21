@@ -2,8 +2,15 @@
 // Walks the main screens per viewport, checks layout basics, and saves screenshots to qa/screens/v020/.
 // Uses only the in-memory fake Spindle API: no network and no model calls.
 import {mkdtemp,mkdir,rm,writeFile,readFile} from 'node:fs/promises';import {spawn} from 'node:child_process';import path from 'node:path';import {createServer} from 'node:http';
+import {SECONDARY_SELECTOR} from '../src/lumiverse/css-floor.mjs';
 const VIEWPORTS=[{w:360,h:460,touch:true},{w:390,h:844,touch:true},{w:1280,h:800,touch:false}];
 const shotDir=process.env.QA_SHOT_DIR||'qa/screens/v020';
+// Text that counts as secondary/meta (>=13px); everything else is primary (>=15px).
+const SECONDARY='small,.hint,.label,.section-label,.page-meta,#count,.thread-meta,.kind,.val,.note,.bar-text p,.bar-note,.speak-index,.speak-news-live,.speak-inner-hint,.tr-n,.chip small,.hrow small,.card-meta,.meta,time,.side-toast';
+// Class words the CSS floor treats as secondary (src/lumiverse/css-floor.mjs).
+const SECONDARY_WORDS=SECONDARY_SELECTOR.source;
+// Things allowed to stay small, with the reason (reported, not hidden).
+const EXEMPT=[{selector:'.sr-only',reason:'screen-reader only'},{selector:'.side-toast',reason:'transient toast'},{selector:'.swatch',reason:'theme colour circles (24px); seven 44px circles do not fit one row on a 360px phone, and the row itself is 44px'},{selector:'.speak-news-dot',reason:'card position dots; the 44px previous/next arrows and swipe do the same'}];
 const profile=await mkdtemp(path.join(process.cwd(),'qa/browser-profile-'));let child,ws,err='',timer,server;const errors=[],report=[],failures=[];
 const types={'.js':'text/javascript','.mjs':'text/javascript','.html':'text/html','.css':'text/css','.json':'application/json'};
 try{
@@ -33,16 +40,29 @@ try{
    const m=await evaluate(`(()=>{const sh=${S},vh=innerHeight,host=document.getElementById('st-sidestory-root').getBoundingClientRect();
     const all=[...sh.querySelectorAll('*')].filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&getComputedStyle(e).visibility!=='hidden';});
     const overflow=all.filter(e=>{const r=e.getBoundingClientRect();return r.right>host.right+1&&!e.closest('[data-ui-scroll],.chips,.scroll-x,.tabs,.speak-news-stage');}).slice(0,5).map(e=>e.tagName.toLowerCase()+'.'+[...e.classList].join('.'));
-    const taps=[...sh.querySelectorAll('button,select,input:not([type=hidden]),textarea')].filter(e=>{const r=e.getBoundingClientRect();return r.width&&r.height&&r.bottom>0&&r.top<vh;});
-    const short=taps.filter(e=>{const r=e.getBoundingClientRect();return Math.min(r.height,r.width)<32&&!e.matches('input[type=checkbox],.speak-news-dot,.swatch,input[type=color]');}).slice(0,6).map(e=>(e.id||e.className||e.tagName)+'='+Math.round(e.getBoundingClientRect().height));
-    const fonts=[...sh.querySelectorAll('p,span,small,button,label,h1,h2,h3,b')].filter(e=>e.textContent.trim()&&e.getBoundingClientRect().height).map(e=>parseFloat(getComputedStyle(e).fontSize));
+    // Phone readability (the reason for 0.1.6): primary text >=15px, secondary/meta text >=13px, tap targets >=44px tall.
+    const SECONDARY=${JSON.stringify(SECONDARY)},EXEMPT=${JSON.stringify(EXEMPT.map(x=>x.selector))};
+    const shown=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden';};
+    const exempt=e=>EXEMPT.some(s=>e.closest(s));
+    const name=e=>(e.id?'#'+e.id:e.tagName.toLowerCase()+([...e.classList].length?'.'+[...e.classList].join('.'):''))+(e.textContent.trim()?'「'+e.textContent.trim().slice(0,12)+'」':'');
+    const texts=[...sh.querySelectorAll('*')].filter(e=>[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())&&shown(e)&&!exempt(e));
+    const SEC_WORDS=new RegExp(${JSON.stringify(SECONDARY_WORDS)},'i');const isSecondary=e=>{for(let n=e;n&&!n.classList?.contains('window');n=n.parentElement){if(n.tagName==='SMALL'||n.matches?.(SECONDARY)||SEC_WORDS.test(n.className&&typeof n.className==='string'?n.className:''))return true;}return false;};
+    const fontRows=texts.map(e=>({e,size:parseFloat(getComputedStyle(e).fontSize),secondary:isSecondary(e)}));
+    const smallPrimary=fontRows.filter(x=>!x.secondary&&x.size<15),smallSecondary=fontRows.filter(x=>x.secondary&&x.size<13);
+    const taps=[...sh.querySelectorAll('button,select,input:not([type=hidden]):not([type=checkbox]):not([type=color]):not([type=file]),textarea,summary,label.row,label.check')].filter(e=>shown(e)&&!exempt(e));
+    const shortTaps=taps.filter(e=>e.getBoundingClientRect().height<44-0.5);
     const gen=sh.getElementById('generate');const g=gen?.getBoundingClientRect();
-    return {host:{w:Math.round(host.width),h:Math.round(host.height)},overflow,shortTaps:short,minFont:Math.min(...fonts),generateVisible:g?g.bottom<=vh+1&&g.top>=0:null};})()`);
+    const fmt=rows=>rows.slice(0,8).map(x=>name(x.e||x)+'='+Math.round(((x.size??x.getBoundingClientRect().height))*10)/10);
+    return {host:{w:Math.round(host.width),h:Math.round(host.height)},overflow,
+     minPrimary:Math.min(...fontRows.filter(x=>!x.secondary).map(x=>x.size)),minSecondary:Math.min(...fontRows.filter(x=>x.secondary).map(x=>x.size)),minTap:Math.round(Math.min(...taps.map(e=>e.getBoundingClientRect().height))),
+     smallPrimary:smallPrimary.length,smallSecondary:smallSecondary.length,shortTaps:shortTaps.length,examples:[...fmt(smallPrimary),...fmt(smallSecondary),...fmt(shortTaps)],
+     generateVisible:g?g.bottom<=vh+1&&g.top>=0:null};})()`);
    const shot=await call('Page.captureScreenshot',{format:'png'});const file=path.join(shotDir,`${tag}-${view}.png`);await writeFile(file,Buffer.from(shot.data,'base64'));
    report.push({viewport:tag,view,screenshot:file,...m});
    if(m.overflow.length)failures.push(`${tag} ${view}: horizontal overflow ${m.overflow.join(' | ')}`);
    if(view==='compose'&&m.generateVisible===false)failures.push(`${tag} compose: 생성 button not visible`);
    if(m.host.h<200)failures.push(`${tag} ${view}: app height ${m.host.h}px`);
+   if(vp.w<=400&&(m.smallPrimary||m.smallSecondary||m.shortTaps))failures.push(`${tag} ${view}: text<15 ${m.smallPrimary}, meta<13 ${m.smallSecondary}, taps<44 ${m.shortTaps} · ${m.examples.join(' | ')}`);
   };
   const step=async(name,fn)=>{try{await fn();}catch(e){const notice=await evaluate(`${S}?.getElementById('notice')?.textContent||''`).catch(()=>'');failures.push(`${tag} ${name}: ${e.message}${notice?' · 화면 알림: '+notice:''}`);}};
   await step('archive',async()=>{await measure('archive');});
@@ -62,7 +82,8 @@ try{
   await step('chat switch',async()=>{await evaluate(`qa.setState('chat.active',{chatId:'chat-2'})`);await sleep(900);const open=await evaluate(`!!${S}.querySelector('.window:not([hidden])')`);if(!open)throw Error('app not reopened after chat switch');await measure('chat-switch');});
  }
  await writeFile('qa/layout-report.json',JSON.stringify(report,null,2));
- for(const r of report)console.log(`${r.viewport} ${r.view}: app ${r.host.w}x${r.host.h}, min font ${r.minFont}px, overflow ${r.overflow.length}, short taps ${r.shortTaps.length}${r.shortTaps.length?' ('+r.shortTaps.join(', ')+')':''}${r.generateVisible===null?'':', generate '+(r.generateVisible?'visible':'HIDDEN')}`);
+ for(const r of report)console.log(`${r.viewport} ${r.view}: app ${r.host.w}x${r.host.h}, min text ${r.minPrimary}px, min meta ${r.minSecondary}px, min tap ${r.minTap}px, text<15 ${r.smallPrimary}, meta<13 ${r.smallSecondary}, taps<44 ${r.shortTaps}, overflow ${r.overflow.length}${r.generateVisible===null?'':', generate '+(r.generateVisible?'visible':'HIDDEN')}`);
+ console.log('exempt:',EXEMPT.map(x=>x.selector+' ('+x.reason+')').join(', '));
  if(failures.length){console.error('QA FAIL:\n'+failures.join('\n'));process.exitCode=1;}else console.log(`QA PASS: ${report.length} screenshots in ${shotDir}`);
  if(errors.length){console.error('browser errors:',errors);process.exitCode=1;}
 }catch(e){errors.push(e.message);console.error(e);process.exitCode=1;}

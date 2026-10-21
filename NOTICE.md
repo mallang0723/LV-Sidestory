@@ -6,7 +6,7 @@ Side Story (사이드 스토리)는 Byulchaek 및 ST-Sidestory 기여자의 작�
 참조한 SillyTavern 원본: https://github.com/f-en-rep/ST-Sidestory/tree/727099430bb6725542656f1cd2b1adf1b3357f05
 고정 버전: 0.17.0 / 727099430bb6725542656f1cd2b1adf1b3357f05.
 
-0.2.0부터 이 고정 버전의 소스 파일을 `upstream/`에 바이트 그대로 포함하고(파일별 SHA-256·git blob은 UPSTREAM.json), 원작 `build.py`와 같은 방식으로 묶어 실행합니다. 원작의 SillyTavern 어댑터(`src/st-host.js`)는 실행물에 넣지 않고, 같은 역할을 하는 Lumiverse 어댑터(`src/lumiverse/`)를 새로 작성했습니다. 원작 파일에 가한 변경(버전 표기, 문서 전체 키 입력 처리, 호스트 이름 문구)은 `src/lumiverse/patches.mjs`에 모두 적었고, 화면 폭 조건을 서랍 폭 기준으로 바꾸는 스타일 변환은 `src/lumiverse/css-transform.mjs`에 있습니다. 원작 프롬프트·화면·보관함 형식은 원작 그대로입니다.
+0.2.0부터 이 고정 버전의 소스 파일을 `upstream/`에 바이트 그대로 포함하고(파일별 SHA-256·git blob은 UPSTREAM.json), 원작 `build.py`와 같은 방식으로 묶어 실행합니다. 원작의 SillyTavern 어댑터(`src/st-host.js`)는 실행물에 넣지 않고, 같은 역할을 하는 Lumiverse 어댑터(`src/lumiverse/`)를 새로 작성했습니다. 원작 파일에 가한 변경(버전 표기, 문서 전체 키 입력 처리, 호스트 이름 문구)은 `src/lumiverse/patches.mjs`에 모두 적었고, 화면 폭 조건을 서랍 폭 기준으로 바꾸는 스타일 변환은 `src/lumiverse/css-transform.mjs`, 휴대폰에서 작은 글자·버튼을 키우는 덧씌움 규칙은 `src/lumiverse/css-floor.mjs`에 있습니다. 원작 프롬프트·화면·보관함 형식은 원작 그대로입니다.
 
 이전 0.1.x는 원작 0.9.8(252fd07ebbb8e134d1e312f9aab034117ce03a95)의 일부를 참고해 다시 작성한 것이었으며, 0.2.0에서 그 코드를 걷어내고 위 방식으로 바꿨습니다.
 

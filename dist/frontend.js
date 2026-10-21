@@ -905,6 +905,360 @@ select{height:36px}
 .archive-actions .btn{flex:1;min-width:0;white-space:nowrap;gap:4px}
 .archive-actions .btn .side-icon{width:14px;height:14px}
 
+@container sidestory (max-width:680px){
+small{font-size:13px}
+code{font-size:15px}
+.check{font-size:15px}
+.quote span{font-size:15px}
+.bar-text p{font-size:13px}
+.bar-note{font-size:13px}
+.nav button{font-size:15px}
+.nav .nav-new{font-size:15px}
+.busy-pill button{font-size:15px}
+#result.raw{font-size:15px}
+.reading-status{font-size:15px}
+.waiting{font-size:15px}
+.st-current-card b{font-size:15px}
+.st-current-card small{font-size:13px}
+.lore-entry-actions button{font-size:15px}
+.series-row b{font-size:15px}
+.source-area{font-size:15px}
+.savebar .grow{font-size:15px}
+.tr-n{font-size:13px}
+.tr-src{font-size:15px}
+.editor-area{font-size:15px}
+.fixed summary{font-size:15px}
+.fixed-rules{font-size:15px}
+.request-card>summary span{font-size:15px}
+.request-card-actions button,.request-page .row button{font-size:15px}
+.prompt-full{font-size:15px}
+#error-text{font-size:15px}
+.side-dialog-body{font-size:15px}
+.side-dialog-field span{font-size:15px}
+:where(.facet-choices,.facet-inputs,.facet-source-panel,.facet-plan-scroll,.feature-dialog,.translation-recovery,.inner-options,[class*=facet-],[class*=identity-],[class*=excerpt-],[class*=replacement-],[class*=temporary-]) :where(button:not(.icon-btn):not(.btn):not(.chip):not(.mini):not(.row):not(.send)){font-size:15px}
+.translation-recovery summary{font-size:15px}
+.prose table{font-size:15px}
+.prose pre,.raw{font-size:15px}
+.pick-list label{font-size:15px}
+.request-page pre{font-size:15px}
+.request-card-heading span{font-size:15px}
+.inline-error{font-size:15px}
+.speak-index{font-size:13px}
+.speak-inner summary{font-size:15px}
+.speak-inner summary:before{font-size:15px}
+.speak-inner-hint{font-size:13px}
+.speak-inner[open] .speak-inner-hint:after{font-size:13px}
+.speak-news-live{font-size:13px}
+.excerpt-selection{font-size:15px}
+.feature-dialog{font-size:15px}
+.feature-dialog h3{font-size:15px}
+.feature-dialog button,.feature-dialog input,.feature-dialog select{font-size:15px}
+.feature-dialog textarea{font-size:15px}
+.feature-body summary{font-size:15px}
+.replacement-pair label{font-size:15px}
+.replacement-options>label:last-of-type{font-size:15px}
+.excerpt-controls>label{font-size:15px}
+.excerpt-backgrounds button{font-size:15px}
+.excerpt-tuning label{font-size:15px}
+.temporary-labels{font-size:15px}
+.excerpt-break-actions button{font-size:15px}
+.translation-recovery textarea{font-size:15px}
+.facet-choices button{font-size:15px}
+.facet-prompt textarea{font-size:15px}
+.facet-plan-preview{font-size:15px}
+.facet-plan-preview h3{font-size:15px}
+.facet-plan-preview h4{font-size:15px}
+.facet-plan-eyebrow{font-size:15px}
+.facet-plan-preview summary{font-size:15px}
+.facet-plan-actions button{font-size:15px}
+.identity-toolbar span{font-size:15px}
+.identity-field>span{font-size:15px}
+.identity-field>div{font-size:15px}
+.identity-field textarea{font-size:15px}
+.identity-edit-actions button{font-size:15px}
+.facet-source-top{font-size:15px}
+.facet-source-top button{font-size:15px}
+.facet-source-heading{font-size:15px}
+.facet-source-heading>span,.facet-source-active-title time,.facet-source-version-head>span{font-size:13px}
+.facet-source-active-title strong{font-size:15px}
+.facet-source-digest p{font-size:15px}
+.facet-source-details{font-size:15px}
+.facet-source-details summary,.facet-source-picker>summary{font-size:15px}
+.facet-source-fact dt{font-size:15px}
+.facet-source-fact dd{font-size:15px}
+.facet-source-version-head{font-size:15px}
+.facet-source-version button{font-size:15px}
+.facet-source-empty{font-size:15px}
+.facet-source-name strong{font-size:15px}
+.facet-source-name>span{font-size:15px}
+.facet-source-meta time{font-size:13px}
+.facet-source-hint{font-size:13px}
+.search input{font-size:15px}
+.bar-text p,.who small{font-size:13px}
+.cell>span{font-size:15px}
+.archive-tools .seg button{font-size:15px}
+.app{font-size:15px}
+.cell select{font-size:15px}
+.continue .mini{font-size:15px}
+.chip.knob>span{font-size:15px}
+.val-line{font-size:13px}
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),textarea,select{font-size:15px}
+.bar-title{font-size:15px}
+.bar-title .count{font-size:13px}
+.bar-text h1{font-size:15px}
+.bar-text p,.bar-note{font-size:13px}
+.btn{font-size:15px}
+.btn.small{font-size:13px}
+.text-btn,.text-action{font-size:15px}
+.tabs .tab{font-size:15px}
+.tab-select select{font-size:15px}
+.chip{font-size:15px}
+.chip small{font-size:13px}
+.chip.select select{font-size:15px}
+.seg button{font-size:15px}
+.mini{font-size:15px}
+.row{font-size:15px}
+.row small{font-size:13px}
+.row .val,.val-line{font-size:13px}
+.label{font-size:13px}
+.field>span{font-size:15px}
+.hint{font-size:13px}
+.kind{font-size:13px}
+.section-label{font-size:15px}
+.empty{font-size:15px}
+.empty-title{font-size:15px}
+.nav button,.nav .nav-new{font-size:15px}
+.busy-pill{font-size:15px}
+.pending-line{font-size:15px}
+.entry-kind{font-size:13px}
+.entry.box .entry-title{font-size:15px}
+.entry-snip{font-size:13px}
+.entry-meta{font-size:13px}
+.entry.line .entry-title{font-size:15px}
+.entry-date{font-size:13px}
+.archive-selection{font-size:15px}
+.archive-pagination{font-size:15px}
+.thread-title{font-size:15px}
+.thread-snip{font-size:13px}
+.thread-meta{font-size:13px}
+.who b{font-size:15px}
+.avatar{font-size:15px}
+#request{font-size:15px}
+.recent{font-size:15px}
+.recent>span{font-size:15px}
+.recent-item{font-size:15px}
+.recent-more{font-size:15px}
+.knob{font-size:15px}
+.knob select{font-size:15px}
+.row-title{font-size:15px}
+.mark{font-size:15px}
+.note{font-size:13px}
+.collapsed{font-size:15px}
+.part-tools button{font-size:15px}
+.page-meta{font-size:13px}
+.writing-box{font-size:15px}
+.continue-opts .opt{font-size:15px}
+#followup{font-size:15px}
+.branch-note{font-size:13px}
+.sheet-head h2{font-size:15px}
+.notice-box{font-size:15px}
+.hrow-text>span{font-size:15px}
+.side-dialog>footer button{font-size:15px}
+.side-toast{font-size:15px}
+.tr-input{font-size:15px}
+.picker-main select{font-size:15px}
+.speak-asker{font-size:15px}
+.branch-switch{font-size:15px}
+/* 0.16.0 — clearer section titles, group bands, reader nav, theme colour */
+.section-label{font-size:15px}
+.series-no{font-size:15px}
+.series-row small{font-size:13px}
+
+.window :is(button,select,summary,label.row,label.check,.tab,.chip,.opt,.seg>button,[role=radio]):not(.swatch):not(.speak-news-dot){min-height:44px}
+.window :is(.icon-btn,.icon-button,.speak-copy,.speak-nav-arrow,.mini,.card-icons button,.reader-nav button){min-width:44px;min-height:44px}
+.window :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]):not([type=file]),textarea){min-height:44px;font-size:16px}
+.window .row{min-height:44px}
+.window #followup{min-height:44px;height:44px;font-size:16px}
+.window .speak-inner-body{font-size:max(15px,.93em)}
+.window{font-size:15px}
+}
+@media (pointer:coarse){
+small{font-size:13px}
+code{font-size:15px}
+.check{font-size:15px}
+.quote span{font-size:15px}
+.bar-text p{font-size:13px}
+.bar-note{font-size:13px}
+.nav button{font-size:15px}
+.nav .nav-new{font-size:15px}
+.busy-pill button{font-size:15px}
+#result.raw{font-size:15px}
+.reading-status{font-size:15px}
+.waiting{font-size:15px}
+.st-current-card b{font-size:15px}
+.st-current-card small{font-size:13px}
+.lore-entry-actions button{font-size:15px}
+.series-row b{font-size:15px}
+.source-area{font-size:15px}
+.savebar .grow{font-size:15px}
+.tr-n{font-size:13px}
+.tr-src{font-size:15px}
+.editor-area{font-size:15px}
+.fixed summary{font-size:15px}
+.fixed-rules{font-size:15px}
+.request-card>summary span{font-size:15px}
+.request-card-actions button,.request-page .row button{font-size:15px}
+.prompt-full{font-size:15px}
+#error-text{font-size:15px}
+.side-dialog-body{font-size:15px}
+.side-dialog-field span{font-size:15px}
+:where(.facet-choices,.facet-inputs,.facet-source-panel,.facet-plan-scroll,.feature-dialog,.translation-recovery,.inner-options,[class*=facet-],[class*=identity-],[class*=excerpt-],[class*=replacement-],[class*=temporary-]) :where(button:not(.icon-btn):not(.btn):not(.chip):not(.mini):not(.row):not(.send)){font-size:15px}
+.translation-recovery summary{font-size:15px}
+.prose table{font-size:15px}
+.prose pre,.raw{font-size:15px}
+.pick-list label{font-size:15px}
+.request-page pre{font-size:15px}
+.request-card-heading span{font-size:15px}
+.inline-error{font-size:15px}
+.speak-index{font-size:13px}
+.speak-inner summary{font-size:15px}
+.speak-inner summary:before{font-size:15px}
+.speak-inner-hint{font-size:13px}
+.speak-inner[open] .speak-inner-hint:after{font-size:13px}
+.speak-news-live{font-size:13px}
+.excerpt-selection{font-size:15px}
+.feature-dialog{font-size:15px}
+.feature-dialog h3{font-size:15px}
+.feature-dialog button,.feature-dialog input,.feature-dialog select{font-size:15px}
+.feature-dialog textarea{font-size:15px}
+.feature-body summary{font-size:15px}
+.replacement-pair label{font-size:15px}
+.replacement-options>label:last-of-type{font-size:15px}
+.excerpt-controls>label{font-size:15px}
+.excerpt-backgrounds button{font-size:15px}
+.excerpt-tuning label{font-size:15px}
+.temporary-labels{font-size:15px}
+.excerpt-break-actions button{font-size:15px}
+.translation-recovery textarea{font-size:15px}
+.facet-choices button{font-size:15px}
+.facet-prompt textarea{font-size:15px}
+.facet-plan-preview{font-size:15px}
+.facet-plan-preview h3{font-size:15px}
+.facet-plan-preview h4{font-size:15px}
+.facet-plan-eyebrow{font-size:15px}
+.facet-plan-preview summary{font-size:15px}
+.facet-plan-actions button{font-size:15px}
+.identity-toolbar span{font-size:15px}
+.identity-field>span{font-size:15px}
+.identity-field>div{font-size:15px}
+.identity-field textarea{font-size:15px}
+.identity-edit-actions button{font-size:15px}
+.facet-source-top{font-size:15px}
+.facet-source-top button{font-size:15px}
+.facet-source-heading{font-size:15px}
+.facet-source-heading>span,.facet-source-active-title time,.facet-source-version-head>span{font-size:13px}
+.facet-source-active-title strong{font-size:15px}
+.facet-source-digest p{font-size:15px}
+.facet-source-details{font-size:15px}
+.facet-source-details summary,.facet-source-picker>summary{font-size:15px}
+.facet-source-fact dt{font-size:15px}
+.facet-source-fact dd{font-size:15px}
+.facet-source-version-head{font-size:15px}
+.facet-source-version button{font-size:15px}
+.facet-source-empty{font-size:15px}
+.facet-source-name strong{font-size:15px}
+.facet-source-name>span{font-size:15px}
+.facet-source-meta time{font-size:13px}
+.facet-source-hint{font-size:13px}
+.search input{font-size:15px}
+.bar-text p,.who small{font-size:13px}
+.cell>span{font-size:15px}
+.archive-tools .seg button{font-size:15px}
+.app{font-size:15px}
+.cell select{font-size:15px}
+.continue .mini{font-size:15px}
+.chip.knob>span{font-size:15px}
+.val-line{font-size:13px}
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),textarea,select{font-size:15px}
+.bar-title{font-size:15px}
+.bar-title .count{font-size:13px}
+.bar-text h1{font-size:15px}
+.bar-text p,.bar-note{font-size:13px}
+.btn{font-size:15px}
+.btn.small{font-size:13px}
+.text-btn,.text-action{font-size:15px}
+.tabs .tab{font-size:15px}
+.tab-select select{font-size:15px}
+.chip{font-size:15px}
+.chip small{font-size:13px}
+.chip.select select{font-size:15px}
+.seg button{font-size:15px}
+.mini{font-size:15px}
+.row{font-size:15px}
+.row small{font-size:13px}
+.row .val,.val-line{font-size:13px}
+.label{font-size:13px}
+.field>span{font-size:15px}
+.hint{font-size:13px}
+.kind{font-size:13px}
+.section-label{font-size:15px}
+.empty{font-size:15px}
+.empty-title{font-size:15px}
+.nav button,.nav .nav-new{font-size:15px}
+.busy-pill{font-size:15px}
+.pending-line{font-size:15px}
+.entry-kind{font-size:13px}
+.entry.box .entry-title{font-size:15px}
+.entry-snip{font-size:13px}
+.entry-meta{font-size:13px}
+.entry.line .entry-title{font-size:15px}
+.entry-date{font-size:13px}
+.archive-selection{font-size:15px}
+.archive-pagination{font-size:15px}
+.thread-title{font-size:15px}
+.thread-snip{font-size:13px}
+.thread-meta{font-size:13px}
+.who b{font-size:15px}
+.avatar{font-size:15px}
+#request{font-size:15px}
+.recent{font-size:15px}
+.recent>span{font-size:15px}
+.recent-item{font-size:15px}
+.recent-more{font-size:15px}
+.knob{font-size:15px}
+.knob select{font-size:15px}
+.row-title{font-size:15px}
+.mark{font-size:15px}
+.note{font-size:13px}
+.collapsed{font-size:15px}
+.part-tools button{font-size:15px}
+.page-meta{font-size:13px}
+.writing-box{font-size:15px}
+.continue-opts .opt{font-size:15px}
+#followup{font-size:15px}
+.branch-note{font-size:13px}
+.sheet-head h2{font-size:15px}
+.notice-box{font-size:15px}
+.hrow-text>span{font-size:15px}
+.side-dialog>footer button{font-size:15px}
+.side-toast{font-size:15px}
+.tr-input{font-size:15px}
+.picker-main select{font-size:15px}
+.speak-asker{font-size:15px}
+.branch-switch{font-size:15px}
+/* 0.16.0 — clearer section titles, group bands, reader nav, theme colour */
+.section-label{font-size:15px}
+.series-no{font-size:15px}
+.series-row small{font-size:13px}
+
+.window :is(button,select,summary,label.row,label.check,.tab,.chip,.opt,.seg>button,[role=radio]):not(.swatch):not(.speak-news-dot){min-height:44px}
+.window :is(.icon-btn,.icon-button,.speak-copy,.speak-nav-arrow,.mini,.card-icons button,.reader-nav button){min-width:44px;min-height:44px}
+.window :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]):not([type=file]),textarea){min-height:44px;font-size:16px}
+.window .row{min-height:44px}
+.window #followup{min-height:44px;height:44px;font-size:16px}
+.window .speak-inner-body{font-size:max(15px,.93em)}
+.window{font-size:15px}
+}
 /* ---- src/lumiverse/style.css — Lumiverse drawer overrides (appended after upstream style.css) */
 :host{position:relative!important;inset:auto!important;display:block!important;width:100%!important;height:100%!important;z-index:auto!important;overflow:hidden!important}
 :host([hidden]){display:none!important}
@@ -921,6 +1275,8 @@ button#new-result-chat{display:none!important}
 @container sidestory (max-height:420px){
  .nav button,.app[data-view=thread] .nav button,.app[data-view=thread] .nav .nav-new{height:44px}
  .nav .nav-new .plus,.app[data-view=thread] .nav .nav-new .plus{width:24px;height:24px}
+ /* icon and label side by side so 15px labels fit in a 44px bar */
+ .nav button,.nav .nav-new{flex-direction:row;gap:6px}
  textarea#request{min-height:84px;height:84px}
  .continue:not(:focus-within) .continue-opts{display:none}
  .continue{padding-top:6px;padding-bottom:6px}
@@ -8326,6 +8682,9 @@ ${item.inner}` : ""].filter(Boolean).join(`
       }
     });
   });
+  if (saved?.sideStory?.viewerSize === undefined) {
+    s.viewerSize = 16;
+  }
 }
 
 // src/lumiverse/rpc.js

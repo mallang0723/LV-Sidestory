@@ -14,6 +14,8 @@ button#new-result-chat{display:none!important}
 @container sidestory (max-height:420px){
  .nav button,.app[data-view=thread] .nav button,.app[data-view=thread] .nav .nav-new{height:44px}
  .nav .nav-new .plus,.app[data-view=thread] .nav .nav-new .plus{width:24px;height:24px}
+ /* icon and label side by side so 15px labels fit in a 44px bar */
+ .nav button,.nav .nav-new{flex-direction:row;gap:6px}
  textarea#request{min-height:84px;height:84px}
  .continue:not(:focus-within) .continue-opts{display:none}
  .continue{padding-top:6px;padding-bottom:6px}
