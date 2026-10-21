@@ -915,6 +915,16 @@ select{height:36px}
 button[data-sheet=preset],.stack>div:has(>.group>button[data-sheet=preset]){display:none!important}
 /* Spindle has no API to create a chat, so "start a new chat from this article" is not offered (copy instead). */
 button#new-result-chat{display:none!important}
+/* Small phones: on a 360×460 screen the drawer leaves ~350px for Side Story. Reclaim height for the text
+   (same idea as 0.1.6's short-screen rules): shorter bottom nav and request box, and the continue options
+   only while the follow-up box is in use. */
+@container sidestory (max-height:420px){
+ .nav button,.app[data-view=thread] .nav button,.app[data-view=thread] .nav .nav-new{height:44px}
+ .nav .nav-new .plus,.app[data-view=thread] .nav .nav-new .plus{width:24px;height:24px}
+ textarea#request{min-height:84px;height:84px}
+ .continue:not(:focus-within) .continue-opts{display:none}
+ .continue{padding-top:6px;padding-bottom:6px}
+}
 `;
   const SideReplace = (() => {
     function clean(rows) {
@@ -8337,7 +8347,7 @@ function createRpc(ctx, { timeout = 120000, uuid = () => crypto.randomUUID() } =
 
 // src/lumiverse/idb.js
 var ARCHIVE_DB = "st-sidestory-archive-v1";
-var CHUNK = 3000000;
+var CHUNK = 2000000;
 function createArchiveIDB({ rpc, real = globalThis.indexedDB, onMigration = () => {} } = {}) {
   let queue = Promise.resolve();
   async function listAll() {

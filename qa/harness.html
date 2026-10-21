@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Same frame/child policy as Lumiverse's frontend index.html. -->
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self' blob: https://www.youtube-nocookie.com; child-src 'self' blob: https://www.youtube-nocookie.com; object-src 'none'; worker-src 'self' blob:;">
+<title>Side Story QA</title>
+<style>
+/* A stand-in for Lumiverse's ViewportDrawer: tab rail + header + .panelContent (padding 12px, scrolls). */
+html,body{margin:0;height:100%;background:#120f1a;color:#eee;font-family:system-ui,sans-serif}
+.chat{position:fixed;inset:0;padding:16px;color:#888}
+.wrapper{position:fixed;top:0;right:0;bottom:0;display:flex;z-index:10}
+.drawer{display:flex;height:100%;width:480px;background:#181622;box-shadow:0 0 24px #0008}
+.sidebar{width:56px;flex:none;background:#1f1b2b;border-right:1px solid #2c2540}
+.panel{flex:1;min-width:0;display:flex;flex-direction:column}
+.header{min-height:48px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #2c2540;font-weight:600}
+.panelContent{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 12px 0;position:relative}
+@media (max-width:600px){
+ .wrapper{left:0}
+ .drawer{width:100vw;flex-direction:column}
+ .sidebar{width:100%;height:58px;border-right:0;border-bottom:1px solid #2c2540}
+}
+</style>
+</head>
+<body>
+<div class="chat">본편 채팅 화면 (QA 대역)</div>
+<div class="wrapper"><div class="drawer"><div class="sidebar"></div><div class="panel"><div class="header">Side Story (사이드 스토리)</div><div class="panelContent"><div id="tab-host" style="width:100%;height:100%"></div></div></div></div></div>
+<script type="module" src="./harness.js"></script>
+</body>
+</html>

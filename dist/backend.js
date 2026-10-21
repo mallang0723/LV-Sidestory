@@ -527,7 +527,16 @@ function createService(api, { now = () => Date.now() } = {}) {
     const p = await api.personas.create({ name: text(name, 120).trim(), description: text(description) }, u);
     return p?.id || "";
   }
-  const fileOf = (rid) => "archive/" + (/^[A-Za-z0-9_-]{1,100}$/.test(rid) ? rid : "x" + Buffer.from(rid).toString("hex").slice(0, 190)) + ".json";
+  const fnv = (s) => {
+    let h = 2166136261;
+    for (const c of s) {
+      h ^= c.codePointAt(0);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(16);
+  };
+  const hex = (s) => Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, "0")).join("");
+  const fileOf = (rid) => "archive/" + (/^[A-Za-z0-9_-]{1,100}$/.test(rid) ? rid : "x" + hex(rid).slice(0, 150) + "-" + fnv(rid)) + ".json";
   const read = (u, p) => api.userStorage.getJson(p, { userId: u, fallback: null });
   const write = (u, p, v) => api.userStorage.setJson(p, v, { userId: u });
   async function archiveFiles(u) {
@@ -575,7 +584,7 @@ function createService(api, { now = () => Date.now() } = {}) {
     await write(u, "migration-0.2.0.json", done);
     return done;
   }
-  const PAGE_BYTES = 3000000;
+  const PAGE_BYTES = 2000000;
   async function archiveList(u, { cursor = 0 } = {}) {
     const migration = cursor ? null : await migrate(u);
     const files = (await archiveFiles(u)).sort();

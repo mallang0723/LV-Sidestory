@@ -1,108 +1,165 @@
 {
   "repository": "https://github.com/f-en-rep/ST-Sidestory",
-  "sha": "252fd07ebbb8e134d1e312f9aab034117ce03a95",
-  "version": "0.9.8",
+  "sha": "727099430bb6725542656f1cd2b1adf1b3357f05",
+  "version": "0.17.0",
   "author": "Byulchaek contributors",
+  "localCopy": "upstream/ (byte-identical; git blob SHA-1 checked against the upstream tree)",
+  "port": {
+    "version": "0.2.0",
+    "host": "Lumiverse 1.2.5 (Spindle)",
+    "adapter": "src/lumiverse/",
+    "generated": "src/generated/side-story-app.js"
+  },
   "files": [
     {
+      "path": "build.py",
+      "gitBlob": "10b8c203d888cb52fb3ad4c02470ec1448d09922",
+      "sha256": "ceb6ce4bcf1031a0ed700daff2c28a5f00b06d08920cef107c0289a02bc4d6bf",
+      "use": "reference: scripts/build-app.mjs reads its file order and wraps the same way"
+    },
+    {
+      "path": "manifest.json",
+      "gitBlob": "0f8b58b13f2bb5c42a55b0ffca15a2b64fbc320b",
+      "sha256": "d2287521f07d8893f1c0106f3af7a262850879db8b9616b2b9c0778910bc08a7",
+      "use": "reference only (version 0.17.0)"
+    },
+    {
+      "path": "package.json",
+      "gitBlob": "86adf13e68e59bad407b698d5f46765709c62d37",
+      "sha256": "b9baa294885e6f21777c31f6110c367e519dda99b31609e89e627051fba0c17d",
+      "use": "reference only (version 0.17.0)"
+    },
+    {
       "path": "src/compact.js",
-      "sha256": "7556ddb4abee91d137f0cd3aa1283767c3dea1746a41b4764c577b9cf6cc0242",
-      "use": "adapted: archive cards and search layout in workspace.js; folders/tags/series management not implemented"
+      "gitBlob": "2c4576c75acd906d5c84d29dfb491e259a30ca02",
+      "sha256": "a01a4c00964c36b10da543512cf48d7857a218f1bd05a731004cc8ec1666e7a1",
+      "use": "bundled with 2 documented patch(es) in src/lumiverse/patches.mjs: text"
     },
     {
       "path": "src/composer.js",
-      "sha256": "75ffa6d7460c221f883f65ce0907936033248c3e3eb051ffb5781ce365b309e0",
-      "use": "adapted: work-family grouping and composer/reader flow in workspace.js; input history not implemented"
+      "gitBlob": "b963b9c98e8bb87cc8566caf7ea3e98f097e6e83",
+      "sha256": "02016484fd4ad6922d1295997e813a89d18d3406ec3b6f9819839e331ec434c7",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/core.js",
-      "sha256": "09a50e3224db7ac554ecda8f64ef7b4709f05fbeda7cac257851a891ab765c9f",
-      "use": "adapted: COMMON/INNER_BASE/PROMPTS extraction; visual policy overridden"
+      "gitBlob": "bebf57fdc965d2be943978a3d942d5a2d5f8d6c5",
+      "sha256": "de4a6d2ad30c1a2ccea3247c06cd50a865ed6ea8da460feba12c7c676eb93df6",
+      "use": "bundled with 1 documented patch(es) in src/lumiverse/patches.mjs: behavior"
     },
     {
       "path": "src/design.js",
-      "sha256": "13bb344f3e262ec0b57609f164665771f00a7f11cffabe23ef94bfea1431c474",
-      "use": "adapted: reference/settings separation in workspace.js; Lumiverse DTOs and no ST global access"
+      "gitBlob": "7e61825ee7dfc7dd805d58a1e1fd521abc7bc334",
+      "sha256": "608e38608f14c6311e25ab6e91404e6ae8939fdc79565fefc5fb8f59ac3358f7",
+      "use": "bundled with 1 documented patch(es) in src/lumiverse/patches.mjs: text"
     },
     {
       "path": "src/enhancements.js",
-      "sha256": "45429d05b21385f9fc03ba2d10cbc28024cd4d991ce94286f442c01890d57868",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "17f99f710001fe035669799b6d9827f5c77f8d90",
+      "sha256": "5077e6e24a32b363e2cd751dab8fefaa194a0dfcc82d0c9b00b25e88df5bbdbd",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/excerpt.js",
-      "sha256": "834966c4d63685287729b1a0702629bf6810aba1510e160d2a2c76c831212e88",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "f6abe27c31568f78946fb2f9a6f9540cc44213c5",
+      "sha256": "4db83182d75aaef1f8a38d1c7149d41f93722056a8ebdc84a152f81e28e31b4b",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/extension.js",
-      "sha256": "889d640235aaf256990d2e6b3e77185ea57ac8af95396b8a2d4eac462193c272",
-      "use": "adapted: ST backup kind/version envelope; core.js backup record validation and bounded transform; archival metadata retained detached"
+      "gitBlob": "90f86cdb6b77a0c55ae544965dca69724523252d",
+      "sha256": "c05da2e321c6ea137ec950dcde77e3ec9a6280d0b7081639742e64fea783d4b1",
+      "use": "bundled with 2 documented patch(es) in src/lumiverse/patches.mjs: behavior, text"
     },
     {
       "path": "src/extras-ui.js",
-      "sha256": "d932bb62e037ef1c0cf41afc6cbebfe6aba77a3d1f6964b52f5bf1b53d61d8e2",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "61b6d83700ab71210fca40417e3773845ce3b0fa",
+      "sha256": "0e96f9c145e2a9c967454e2d056479aca3d42f121ae2feb12629e0c3decc690c",
+      "use": "bundled with 1 documented patch(es) in src/lumiverse/patches.mjs: text"
     },
     {
       "path": "src/extras.js",
-      "sha256": "d710c3bc23a91d76ff79844559f0cf5eb351042fa183e65a69bbc489a9415a68",
-      "use": "adapted: translation contract, ID recovery, text-only HTML segmentation; full upstream batching not implemented"
+      "gitBlob": "841e76d3cb1ff1d67b9e182a3c1227008efa1cca",
+      "sha256": "7125dc23c8db00f2fc45d967545f15652dcce22ecd6e9d247549e639838a963a",
+      "use": "bundled with 1 documented patch(es) in src/lumiverse/patches.mjs: text"
     },
     {
       "path": "src/facet.js",
-      "sha256": "b0eada2233170679edd59cff0d9746aa05d1d50a9bcf64fe3937ccb421cefc6d",
-      "use": "adapted: identity extraction prompt and field allowlist; strict rejection validator and explicit approval; AU export only"
+      "gitBlob": "7c974036496d90f2226739f1f3b6fcfff2a57dcd",
+      "sha256": "a27c7310c638f9515e7548cdd1fbbf6c03799df1dbb94ea9aba665bf493a5c93",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/generation.js",
-      "sha256": "59e61806557beb2789438e301580a980546c0982266e4e642912d4d4362f135b",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "78903710d9644554d47600fa0ec1781bbe604db8",
+      "sha256": "c4437a78e96c5959154715752f3739e8dde63015aedc2651d3b4b53691bc5b96",
+      "use": "bundled with 4 documented patch(es) in src/lumiverse/patches.mjs: text"
+    },
+    {
+      "path": "src/morph.js",
+      "gitBlob": "0e5ce91ab4b837cb8f669e6197b3f14372d16d32",
+      "sha256": "05ddadbc87835f934e09fee1651def5977894727da108b678f5f91d24f972881",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/reading-surface.js",
+      "gitBlob": "d204f1c7c8c49c075c0ed586f591cab953bf524c",
       "sha256": "9cceaa8b63e1f92cd7e2064d324a713ff127e40a6c63c5254350d51ac4858cc9",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "bundled verbatim"
     },
     {
       "path": "src/reading-ui.js",
-      "sha256": "171e1da2ca12953c88613419e0b609d1f8c51fb7d5db98de559a6af0fad643df",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "dababd2508f86e4564e56f3678f48bbccc591c52",
+      "sha256": "ca79a339539b3f57bb9ed27238eb0d535db766479a4c06632b725a68b95f0f69",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/renderer.js",
-      "sha256": "6c4b6bc443c8ca2719fb9dcf26f50f49bbb1d7835864032870abc0b3dc9333fd",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "0fa76e65a765e3f3aeba61b5d090c7deccbcdb7b",
+      "sha256": "263e82c59e8b935b868bedc07cee0afaef0205ec2f936b04114f114e8d1c1bfb",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/replacement.js",
+      "gitBlob": "17d82074c19226166e0485fd5e2d0e1eb30b369f",
       "sha256": "f176cafc4d81902abcdd558de22ea732262451ad9e6a988081d10d06627917c8",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "use": "bundled verbatim"
     },
     {
       "path": "src/series.js",
-      "sha256": "b443fa5137b0c464608de6a2466b58c5490408828e12df72e8d3266c03629980",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "26d2a7f1e45f7ba6fcf8f1872eda0176eb85644e",
+      "sha256": "2bfe05450a5112dbd328ff4cc112a9423b61c1853f04e6c0d092e27ff56b527c",
+      "use": "bundled verbatim"
+    },
+    {
+      "path": "src/shell.js",
+      "gitBlob": "d3dae2546ffd8ff115a403843ac825ca9dccd897",
+      "sha256": "8ecf46143fad51c4a7764adf837f4104edc414436115f471a2f1585d098ebced",
+      "use": "bundled with 5 documented patch(es) in src/lumiverse/patches.mjs: text"
     },
     {
       "path": "src/st-host.js",
-      "sha256": "2c33256f952baadb9cf679d917991520e761660c76b1ba9eedeb37c3f227d50d",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "979656aed95bff371e8ebb44695f084634304c01",
+      "sha256": "10ae62b8540ac1104af856176d8572a7d161510e8b7d3d302f00e716378cb0fd",
+      "use": "not bundled: SillyTavern adapter; src/lumiverse/host.js implements the same stHost surface for Lumiverse"
     },
     {
       "path": "src/style.css",
-      "sha256": "4461a8aa7d2bb2904fe31153952c096e6eaf7f049cfa482d040ced7988b211a8",
-      "use": "adapted: folder tabs, composer/reader and narrow-pane layout; scoped workspace-style.js uses Lumiverse theme tokens instead of ST full-page overlay"
+      "gitBlob": "b4b0447c5eaa5f591df95720e351b0c0ce674a6b",
+      "sha256": "33f031fcaea59067e0521d147988ecab02ca525402df41a6cd3f83fb67e0abcf",
+      "use": "bundled; viewport width/height queries become container queries and vh/vw become cqh/cqw (src/lumiverse/css-transform.mjs); src/lumiverse/style.css appended"
     },
     {
       "path": "src/token-budget.js",
-      "sha256": "de1ec412ce799b0229c93b520068f3b60c4b46c36537300c7a745bc66609e95e",
-      "use": "reused with ESM export"
+      "gitBlob": "ba1f99d065532f35c7f580c1eec3c78c014fda47",
+      "sha256": "18ecdf9b7515e2c845bb96b5061c98e95a23b0eec977d27c3c1387dbd0cf2b6b",
+      "use": "bundled verbatim"
     },
     {
       "path": "src/transport.js",
-      "sha256": "8a69553510bb22389b9e3fba5a49601a3ff10ddf3fda29c1b621f5ea497a83fd",
-      "use": "excluded; host-specific or reimplemented minimal scope"
+      "gitBlob": "3a22d8eaed5a7e8f810ee97653df9829a36f9b9e",
+      "sha256": "21ffec78abe70f276971fdb440fe9177b4ea65a7d1b84fe13742bd93a897d0cb",
+      "use": "bundled verbatim"
     }
   ]
 }

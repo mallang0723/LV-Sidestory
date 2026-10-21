@@ -3,7 +3,7 @@
 // device. This is the small slice of the IndexedDB API upstream's dbOp() uses (open, transaction,
 // objectStore().getAll/put/delete, oncomplete/onerror). Other databases go to the browser's IndexedDB.
 export const ARCHIVE_DB='st-sidestory-archive-v1';
-const CHUNK=3_000_000;
+const CHUNK=2_000_000;
 
 export function createArchiveIDB({rpc,real=globalThis.indexedDB,onMigration=()=>{}}={}){
  let queue=Promise.resolve();
