@@ -37,7 +37,7 @@ export function loreEntry(e){
 /** Chat rows as upstream expects: ids are positions in the chat so series cut-offs can compare them. */
 export function messageRow(m){
  const extra=m.extra||{};
- return {id:String(m.index_in_chat),messageId:m.id,role:m.is_user?'user':(m.name||'assistant'),name:m.name||'',content:String(m.content??''),characterId:typeof extra.character_id==='string'?extra.character_id:'',system:m.role==='system',sendDate:m.send_date??null,extra:{hiddenFromAI:extra.hidden===true,hiddenFromUser:false}};
+ return {id:String(m.index_in_chat),messageId:m.id,role:m.role==='system'?'system':m.is_user?'user':(m.name||'assistant'),name:m.name||'',content:String(m.content??''),characterId:typeof extra.character_id==='string'?extra.character_id:'',system:m.role==='system',sendDate:m.send_date??null,extra:{hiddenFromAI:extra.hidden===true,hiddenFromUser:false}};
 }
 const characterWorldBooks=c=>{const x=c?.extensions||{};return Array.isArray(x.world_book_ids)?x.world_book_ids.filter(v=>typeof v==='string'):typeof x.world_book_id==='string'&&x.world_book_id?[x.world_book_id]:[];};
 const groupIds=chat=>chat?.metadata?.group===true||chat?.metadata?.group===1?(Array.isArray(chat.metadata.character_ids)?chat.metadata.character_ids.filter(x=>typeof x==='string'):[]):[];

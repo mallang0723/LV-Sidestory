@@ -32,7 +32,9 @@ export function locateHistory(dryRun,source){
  result.expected=entry.messageCount;
  const injected=new Set(breakdown.filter(b=>b&&b.type!=='chat_history'&&typeof b.content==='string'&&norm(b.content)).map(b=>norm(b.content)));
  for(let i=entry.firstMessageIndex;i<messages.length&&result.indices.length<entry.messageCount;i++)if(!injected.has(norm(textOf(messages[i]))))result.indices.push(i);
- const eligible=eligibleHistory(source);
+ // Lumiverse merges consecutive user messages into one prompt turn; group them the same way.
+ const eligible=[];
+ for(const m of eligibleHistory(source)){const last=eligible.at(-1);if(last&&m.is_user&&last.is_user)eligible[eligible.length-1]={...last,index_in_chat:m.index_in_chat,content:last.content+'\n'+m.content};else eligible.push(m);}
  result.rows=result.indices.length===entry.messageCount?eligible.slice(Math.max(0,eligible.length-entry.messageCount)):[];
  if(result.rows.length===result.indices.length)result.indices.forEach((at,k)=>{const p=probe(result.rows[k]?.content);if(!p)return;result.checked++;if(textOf(messages[at]).includes(p))result.verified++;});
  result.reliable=result.indices.length===entry.messageCount&&result.rows.length===entry.messageCount&&(result.checked===0||result.verified*2>=result.checked);
@@ -72,7 +74,11 @@ export function shapeHostPrompt({dryRun,source=[],plan=null,quietPrompt='',auxil
  const report={before:history.indices.length,after:history.indices.length,anchor:null};
  const meta={host:'lumiverse',model:dryRun?.model??null,provider:dryRun?.provider??null,historyRows:history.indices.length,historyExpected:history.expected,historyVerified:`${history.verified}/${history.checked}`,historyMapping:history.reliable?'matched':'approximate'};
  let kept=history.indices.slice();
- if(plan){
+ // Without a verified map the history rows may include injected blocks: change nothing rather than cut
+ // the wrong rows (upstream's own failure mode is "full history + warning").
+ if(plan&&!history.reliable){
+  report.skipped=true;if(plan.anchor)report.anchor='missing';meta.historyMapping='unreliable';
+ }else if(plan){
   if(plan.exclude)kept=[];
   else{
    if(plan.anchor){

@@ -21,7 +21,15 @@ function locateHistory(dryRun, source) {
   for (let i = entry.firstMessageIndex;i < messages.length && result.indices.length < entry.messageCount; i++)
     if (!injected.has(norm(textOf(messages[i]))))
       result.indices.push(i);
-  const eligible = eligibleHistory(source);
+  const eligible = [];
+  for (const m of eligibleHistory(source)) {
+    const last = eligible.at(-1);
+    if (last && m.is_user && last.is_user)
+      eligible[eligible.length - 1] = { ...last, index_in_chat: m.index_in_chat, content: last.content + `
+` + m.content };
+    else
+      eligible.push(m);
+  }
   result.rows = result.indices.length === entry.messageCount ? eligible.slice(Math.max(0, eligible.length - entry.messageCount)) : [];
   if (result.rows.length === result.indices.length)
     result.indices.forEach((at, k) => {
@@ -73,7 +81,12 @@ function shapeHostPrompt({ dryRun, source = [], plan = null, quietPrompt = "", a
   const report = { before: history.indices.length, after: history.indices.length, anchor: null };
   const meta = { host: "lumiverse", model: dryRun?.model ?? null, provider: dryRun?.provider ?? null, historyRows: history.indices.length, historyExpected: history.expected, historyVerified: `${history.verified}/${history.checked}`, historyMapping: history.reliable ? "matched" : "approximate" };
   let kept = history.indices.slice();
-  if (plan) {
+  if (plan && !history.reliable) {
+    report.skipped = true;
+    if (plan.anchor)
+      report.anchor = "missing";
+    meta.historyMapping = "unreliable";
+  } else if (plan) {
     if (plan.exclude)
       kept = [];
     else {
@@ -318,7 +331,7 @@ function loreEntry(e) {
 }
 function messageRow(m) {
   const extra = m.extra || {};
-  return { id: String(m.index_in_chat), messageId: m.id, role: m.is_user ? "user" : m.name || "assistant", name: m.name || "", content: String(m.content ?? ""), characterId: typeof extra.character_id === "string" ? extra.character_id : "", system: m.role === "system", sendDate: m.send_date ?? null, extra: { hiddenFromAI: extra.hidden === true, hiddenFromUser: false } };
+  return { id: String(m.index_in_chat), messageId: m.id, role: m.role === "system" ? "system" : m.is_user ? "user" : m.name || "assistant", name: m.name || "", content: String(m.content ?? ""), characterId: typeof extra.character_id === "string" ? extra.character_id : "", system: m.role === "system", sendDate: m.send_date ?? null, extra: { hiddenFromAI: extra.hidden === true, hiddenFromUser: false } };
 }
 var characterWorldBooks = (c) => {
   const x = c?.extensions || {};

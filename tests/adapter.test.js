@@ -200,3 +200,28 @@ test('optional preview assembles the prompt but never calls the model',async()=>
  assert.equal(w.api.calls.filter(c=>c.name==='generate.raw').length,1);
  host.cleanup();rpc.dispose();w.dispose();
 });
+
+test('an unverified history map leaves the assembled prompt alone',()=>{
+ const api=createFakeSpindle();const source=[...api.messages.get('chat-1')];
+ // A merged system row whose text is not any breakdown block: the history count cannot be matched.
+ const dry={messages:[{role:'system',content:'P'},{role:'system',content:'P+합쳐진 깊이 블록'},{role:'user',content:'완전히 다른 내용 하나'},{role:'assistant',content:'완전히 다른 내용 둘입니다'},{role:'user',content:'완전히 다른 내용 셋입니다'}],
+  breakdown:[{type:'block',content:'P'},{type:'chat_history',messageCount:3,firstMessageIndex:1},{type:'block',content:'깊이 블록'}]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{limit:1,exclude:false,anchor:{index:1,sendDate:'chat-1-m1',name:''},append:null},quietPrompt:'Q'});
+ assert.deepEqual(r.messages.map(m=>m.content),[...dry.messages.map(m=>m.content),'Q']);
+ assert.equal(r.report.anchor,'missing');assert.equal(r.report.skipped,true);assert.equal(r.meta.historyMapping,'unreliable');
+});
+
+test('Lumiverse system messages stay system rows',async()=>{
+ const api=createFakeSpindle();api.messages.get('chat-1').push({id:'sys',chat_id:'chat-1',index_in_chat:4,is_user:false,name:'System',role:'system',content:'시스템 안내',extra:{spindle_role:'system'}});
+ const rows=await createService(api).handle(U,'messages',{chatId:'chat-1'});
+ assert.equal(rows.at(-1).role,'system');assert.equal(rows.at(-1).system,true);
+});
+
+test('consecutive user messages count as one history row, like Lumiverse assembly',()=>{
+ const m=(i,is_user,content)=>({id:'m'+i,index_in_chat:i,is_user,content,extra:{}});
+ const source=[m(0,false,'첫 번째 캐릭터 대사입니다 길게'),m(1,true,'유저가 먼저 보낸 메시지입니다'),m(2,true,'유저가 이어서 보낸 메시지입니다'),m(3,false,'캐릭터의 마지막 대답입니다 길게')];
+ const dry={messages:[{role:'system',content:'P'},{role:'assistant',content:source[0].content},{role:'user',content:source[1].content+'\n'+source[2].content},{role:'assistant',content:source[3].content}],breakdown:[{type:'block',content:'P'},{type:'chat_history',messageCount:3,firstMessageIndex:1}]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{anchor:{index:2,sendDate:'m2',name:''}},quietPrompt:'Q'});
+ assert.equal(r.meta.historyMapping,'matched');assert.equal(r.report.anchor,'applied');
+ assert.deepEqual(r.messages.map(m=>m.role),['system','assistant','user','user']);
+});
