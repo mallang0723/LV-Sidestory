@@ -1,5 +1,10 @@
 # 변경 내역
 
+## 0.2.1
+
+- 휴대폰에서 Tailscale 주소처럼 `http://`(localhost가 아닌 주소)로 루미버스를 열면 이면 탭 곳곳과 AI 연결 불러오기에 “crypto.randomUUID is not a function”이 뜨고 연결 목록이 안 뜨던 문제를 고쳤습니다. 이런 페이지에는 `crypto.randomUUID`가 없어서, 이제 `crypto.getRandomValues`로 같은 형식의 ID를 만듭니다.
+- 브라우저 QA에 localhost가 아닌 http 주소에서 여는 검사(`npm run qa:insecure`)를 추가했습니다.
+
 ## 0.2.0
 
 원작 ST-Sidestory 0.17.0을 기준으로 다시 이식했습니다. 원작 코드를 거의 그대로 쓰고, 루미버스와 맞닿는 부분만 어댑터로 바꿨습니다(마리나라판 이면 · SIDE B와 같은 방식).

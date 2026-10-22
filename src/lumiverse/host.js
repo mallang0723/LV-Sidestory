@@ -2,6 +2,7 @@
 // SillyTavern version). Same surface, Lumiverse underneath: reads go to the backend worker
 // (src/lumiverse/service.js), the active chat/persona/connection come from Spindle state selectors.
 import {createArchiveIDB} from './idb.js';
+import {uuid} from './ids.js';
 
 const abortError=()=>new DOMException('중단됨','AbortError');
 const check=signal=>{if(signal?.aborted)throw abortError();};
@@ -85,7 +86,7 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
  async function generate(payload,signal){
   check(signal);
   if(running)throw Error('이전 API 요청이 종료될 때까지 잠시 기다려 주세요.');
-  const runId=crypto.randomUUID(),{onPromptReady,onHistory,...rest}=payload;
+  const runId=uuid(),{onPromptReady,onHistory,...rest}=payload;
   const clean=JSON.parse(JSON.stringify(rest)),preview=previewNext;previewNext=false;
   if(preview)clean.previewOnly=true;
   let handler;const job={abort(){call('abort',{runId}).catch(()=>{});}};running=job;

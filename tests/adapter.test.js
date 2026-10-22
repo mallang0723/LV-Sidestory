@@ -5,6 +5,7 @@ import {createService,allPages,CURRENT} from '../src/lumiverse/service.js';
 import {shapeHostPrompt,locateHistory,fillNames,HISTORY_BLOCKED} from '../src/lumiverse/assembly.js';
 import {createRpc} from '../src/lumiverse/rpc.js';
 import {createLumiverseHost} from '../src/lumiverse/host.js';
+import {uuid} from '../src/lumiverse/ids.js';
 import {install} from '../src/backend.js';
 
 const U='u1';
@@ -247,4 +248,37 @@ test('selected-entries mode removes the host’s own world info rows, preferring
  // A chat line identical to a WI entry stays when the history is verified.
  const chat=shapeHostPrompt({dryRun:{messages:[{role:'system',content:'SAME'},{role:'user',content:'SAME'}],breakdown:[{type:'world_info',content:'SAME'}]},source:[turn(0,true,'SAME')],selectedLoreOnly:true});
  assert.deepEqual(chat.messages,[{role:'user',content:'SAME'}]);
+});
+
+// Plain http on a non-localhost address (a phone reaching the PC over Tailscale) is not a secure context:
+// crypto.randomUUID is missing there. Shadow the prototype method on the instance so it is really gone.
+const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+async function withoutWebCrypto(names,fn){
+ const c=globalThis.crypto;
+ for(const n of names)Object.defineProperty(c,n,{value:undefined,configurable:true,writable:true});
+ try{for(const n of names)assert.notEqual(typeof c[n],'function',n+' still callable');return await fn();}
+ finally{for(const n of names)delete c[n];}
+}
+
+test('insecure context: without crypto.randomUUID the rpc and host still make ids and work',async()=>{
+ await withoutWebCrypto(['randomUUID'],async()=>{
+  const w=wire();const sent=[];const send=w.ctx.sendToBackend;w.ctx.sendToBackend=m=>{sent.push(m);send(m);};
+  const {host,rpc}=makeHost(w);
+  const list=await rpc.call('connections',{activeProfileId:'conn-1'});
+  assert.deepEqual(list.map(c=>c.id),[CURRENT,'conn-1','conn-2']);
+  const text=await host.generate({connectionId:'conn-1',messages:[{role:'user',content:'U'}],parameters:{maxTokens:100}},new AbortController().signal);
+  assert.match(text,/생성된 이야기/);
+  const gen=sent.find(m=>m.op==='generate');
+  assert.match(gen.args.runId,V4);
+  for(const m of sent)assert.match(m.id,V4);
+  assert.equal(new Set(sent.map(m=>m.id)).size,sent.length);
+  host.cleanup();rpc.dispose();w.dispose();
+ });
+ assert.equal(typeof crypto.randomUUID,'function','restored');
+});
+
+test('id fallbacks: getRandomValues, then Math.random, both give RFC 4122 v4 strings',async()=>{
+ await withoutWebCrypto(['randomUUID'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
+ await withoutWebCrypto(['randomUUID','getRandomValues'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
+ assert.match(uuid(),V4);
 });

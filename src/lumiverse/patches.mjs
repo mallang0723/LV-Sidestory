@@ -8,7 +8,7 @@
 // src/lumiverse/ (host adapter, prelude shims, glue, style overrides) without touching upstream.
 export const PATCHES=[
  {file:'core.js',kind:'behavior',why:'버전 표시: 이식판 버전과 원작 버전을 함께 보여 줌',
-  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.0 · ST 0.17.0'"},
+  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.1 · ST 0.17.0'"},
  {file:'extension.js',kind:'behavior',why:'호스트 서랍 안에서는 문서 전체 키 입력을 가로채지 않음 (Side Story 안의 입력은 host 요소에서 그대로 처리)',
   find:"document.addEventListener('keydown',e=>{keydown(e);if(opened)e.stopPropagation();});",
   replace:"if(!stHost.embedded)document.addEventListener('keydown',e=>{keydown(e);if(opened)e.stopPropagation();});"},
