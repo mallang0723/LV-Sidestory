@@ -1,10 +1,10 @@
-# 검증 범위와 기능 제한 — 0.2.1
+# 검증 범위와 기능 제한 — 0.2.2
 
 0.2.0은 원작 ST-Sidestory 0.17.0(727099430bb6)을 원본 그대로 묶고 루미버스 어댑터로 연결한 버전입니다. 아래는 2026-10-21 로컬 검증 결과입니다. 실제 Lumiverse 호스트 설치, 실제 프리셋으로 조립한 프롬프트, 실제 모델 응답, 실제 휴대폰은 이번에 확인하지 않았습니다.
 
 ## 실행한 검사
 
-- `npm test` — 36/36 통과. 가짜 Spindle API(`tests/fake-spindle.js`, 네트워크·모델 없음)로:
+- `npm test` — 40/40 통과. 가짜 Spindle API(`tests/fake-spindle.js`, 네트워크·모델 없음)로:
   - 로어북 130권·엔트리 45개를 페이지 끝까지 읽기, 연결 로어북(캐릭터·페르소나·채팅·전역) 표시
   - 채팅 정보가 원작 `st-host.js`와 같은 모양인지, 다른 사용자의 채팅 거부, 숨긴 메시지 표시
   - 드라이런 조립: 끼어든 작가 노트를 건너뛰고 채팅 기록 위치 찾기, 최근 N개·시리즈 기준점(메시지 ID)·본편 제외·앞 편 이어 붙이기·보조 대화 순서, 기준점을 못 찾을 때 `missing` 보고
@@ -30,6 +30,12 @@
 - `npm run qa:insecure` — 통과(0.2.1). Playwright로 Chromium·Firefox에서 서랍 대역을 `http://sidestory.test:<포트>`(localhost가 아닌 http 주소, 로컬 QA 서버로 이름만 연결)로 엽니다. 휴대폰이 Tailscale로 PC의 루미버스에 `http://100.x.y.z`로 붙는 경우와 같은 **보안 컨텍스트가 아닌 페이지**입니다. 페이지 안에서 `isSecureContext===false`이고 `crypto.randomUUID`·`crypto.subtle`·`navigator.clipboard`·`navigator.storage`가 없는 것을 먼저 확인한 뒤, 설정 → 연결에서 생성용 연결 목록(메인·번역 연결)이 뜨는지, 스토리 생성이 끝까지 되는지, 오류·화면 알림에 `randomUUID`가 없는지 봅니다. 같은 검사를 0.2.0 빌드(1d7b155)에 돌리면 두 브라우저 모두 “설정 저장 실패: crypto.randomUUID is not a function”과 연결 목록 미표시로 실패합니다.
   - **고친 문제(실기기 보고): 휴대폰에서 Tailscale 주소(http)로 열면 이면 탭 곳곳과 AI 연결 불러오기에 “crypto.randomUUID is not a function”이 뜨고 연결 목록이 안 뜸.** `crypto.randomUUID`는 HTTPS나 localhost에서만 있습니다. 어댑터의 요청 ID(`src/lumiverse/rpc.js`)와 생성 실행 ID(`src/lumiverse/host.js`)가 이것을 그대로 불러 모든 서버 요청이 실패했습니다. 이제 `src/lumiverse/ids.js`가 `crypto.randomUUID` → `crypto.getRandomValues`(보안 컨텍스트가 아니어도 있음)로 만든 RFC 4122 v4 → `Math.random` 순으로 ID를 만듭니다. 원작 코드의 ID 생성은 원래 대체 경로가 있어 그대로 둡니다. 빌드된 `dist/frontend.js`의 `randomUUID`는 모두 존재 검사 뒤에서만 불립니다. 다른 보안 컨텍스트 전용 API는 원작의 복사 버튼(`navigator.clipboard`, try/catch로 “클립보드 권한이 없어요” 안내)뿐이고 `crypto.subtle`·`navigator.storage`·`navigator.share`는 쓰지 않습니다.
   - 단위 검사: `crypto.randomUUID`를 없앤 Node에서 rpc 요청·연결 목록·생성이 되고 ID가 v4 형식이며 겹치지 않는지, `getRandomValues`까지 없앨 때도 v4 ID가 나오는지.
+  - 0.2.2에서 다시 실행해 통과.
+
+- `npm run qa:chat` — 통과(0.2.2, 12건). `qa:insecure`와 같은 보안 컨텍스트가 아닌 http 주소에서 Chromium·Firefox로, 호스트가 열린 채팅을 알리는 방식 여섯 가지(`qa/harness.html?scenario=`)마다 Side Story가 채팅을 찾아 열리는지 봅니다: Side Story가 설정을 불러오는 사이에 채팅이 복원되고 서랍을 탭 전환 없이 다시 연 경우(`late`), 채팅이 이미 열린 채 서랍이 닫혀 있다가 같은 방법으로 다시 연 경우(`closed`), 호스트 알림이 전혀 없이 채팅과 서랍만 바뀐 경우(`silent`), `ctx.state.get('chat.active')`가 오류를 내고 `ctx.getActiveChat()`만 아는 경우(`fallback`), 둘 다 없고 `CHAT_SWITCHED {chatId}` 이벤트만 오는 경우(`event`), 채팅이 없는 경우의 안내와 진단 줄(`none`). 0.2.1 빌드에서는 12건 모두 실패(앞의 셋은 안내가 그대로 남음)하고 이번 빌드에서 통과합니다.
+  - **고친 문제(실기기 보고, Lumiverse staging 최신 빌드 · 휴대폰 Chrome · Tailscale http): 채팅방을 열어 둔 채로도 이면 탭에 “채팅을 열면 Side Story를 쓸 수 있어요.”만 뜸.** 원작은 채팅 변경 알림(CHAT_CHANGED)이나 탭 활성화를 받을 때만 열립니다. 루미버스의 `onActivate`는 서랍에서 **선택된 탭이 바뀔 때만** 불리고(`frontend/src/lib/spindle/placement-helper.ts`), 서랍을 닫아도 선택된 탭은 남아 서랍 손잡이로 다시 열면(`ViewportDrawer.tsx`의 `openDrawer()`) 불리지 않습니다. 어댑터는 시작할 때 서랍이 이 탭을 보이고 있을 때만 열었고, 채팅 변경 알림은 원작이 설정을 불러오는 동안(백엔드 왕복) 오면 들을 곳이 없어 사라졌습니다. 0.2.1 전에는 모든 요청이 즉시 실패해 이 대기 시간이 없었기 때문에 이 문제가 가려져 있었습니다. Lumiverse 1.2.5에서도 같습니다(관련 파일은 staging과 같음). 이제 어댑터(`src/lumiverse/host.js`)가 원작이 준비되면 채팅이 열려 있을 때 바로 열고, 서랍이 이 탭으로 열릴 때(`ui.drawer` 구독, 탭 ID 끝의 등록 번호는 무시)와 안내가 화면에 보일 때(IntersectionObserver), 안내가 보이는 동안 1.5초마다 다시 확인합니다. 열린 채팅은 `ctx.state.get('chat.active')` → `ctx.getActiveChat()` → 구독/`CHAT_SWITCHED` 값 순서로 찾고, 오류는 삼키지 않고 기록합니다.
+  - 안내 아래에 작은 진단 줄(루미버스 버전, 각 감지 경로가 돌려준 값)과 “다시 확인” 버튼을 둡니다. 사용자가 이 줄을 그대로 보내면 호스트가 무엇을 돌려줬는지 알 수 있습니다. 원작이 아직 준비 중일 때는 “불러오는 중”으로 표시합니다.
+  - 단위 검사: 원작이 준비되기 전에 바뀐 채팅이 준비 시점에 열리는지, 서랍이 닫혀 있어도 시작 시 열리는지, 탭 전환 없이 서랍이 다시 열릴 때(이전 등록 번호의 탭 ID 포함) 알림 없이 바뀐 채팅이 열리는지, `getActiveChat`·`CHAT_SWITCHED` 대체 경로와 진단 문구, 실제 저장소가 “채팅 없음”이라고 하면 지난 이벤트보다 그것을 따르는지, “다시 확인”과 시작 실패 문구.
 
 - **고친 문제(실기기 보고): 핵심정보를 추출했는데 AU 화면에서 캐릭터·페르소나가 “미추출”로 보임.** 원작은 저장한 추출본을 이름이 아니라 ID로 찾습니다. 캐릭터는 `record.characterIds[0]`(채팅의 캐릭터 목록, 그룹이면 그룹 순서)과 지금 채팅의 첫 캐릭터를, 페르소나는 `record.settings.personaIds[0]`(`persona:<ID>`)과 지금 페르소나를 비교합니다. 0.2.0이 0.1.x 기록을 옮길 때 페르소나 ID를 비워 두고(0.1.x는 저장하지 않았음), 캐릭터는 채팅의 `character_id` 하나만 넣어서 그룹 채팅에서는 첫 멤버가 아니라 인사말 캐릭터가 들어갔습니다. 그래서 옮겨진 핵심정보는 페르소나 쪽이 언제나, 그룹 채팅의 캐릭터 쪽도 대부분 “미추출”이었습니다.
   - 이전 단계: 캐릭터 ID는 채팅의 캐릭터 목록(그룹 순서) 전체로, 페르소나 ID는 추출된 유저 이름과 이름이 같은 페르소나가 하나뿐일 때 그 ID로 넣습니다(같은 이름이 없거나 여럿이면 넣지 않음).

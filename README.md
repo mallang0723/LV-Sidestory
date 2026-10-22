@@ -77,6 +77,7 @@ Lumiverse 확장 설치에서 GitHub 주소 `https://github.com/mallang0723/LV-S
 - `npm test`: 가짜 Spindle API로 어댑터(드라이런 조립·페이지 읽기·채팅 전환·모델 전달·미리보기), 0.1.x 이전, 빌드 무결성을 검사합니다.
 - `npm run qa:browser`: headless Chromium에서 서랍 대역 페이지에 실행물을 띄워 360×460·390×844·1280×800 화면에서 넘침·글자 크기·누름 영역을 검사하고 `qa/screens/v020/`에 스크린샷을 남깁니다. 실제 모델 호출은 하지 않습니다.
 - `npm run qa:scroll`: Playwright로 Firefox·Chromium 휴대폰 화면에서 각 화면과 아티클이 휠·터치로 스크롤되는지 검사합니다(`PLAYWRIGHT_MODULE`, `FIREFOX_BIN`으로 지정).
+- `npm run qa:chat`: 호스트가 열린 채팅을 알리는 여러 방식(늦은 알림, 탭 전환 없는 서랍 열기, 알림 없음, 대체 API)에서 이면이 채팅을 찾아 열리는지 같은 http 주소에서 Firefox·Chromium으로 검사합니다.
 - `npm run qa:insecure`: localhost가 아닌 http 주소(보안 컨텍스트 아님, 휴대폰에서 Tailscale로 여는 경우)에서 Firefox·Chromium으로 열어 연결 목록과 생성이 되는지 검사합니다(`PLAYWRIGHT_MODULE`, `FIREFOX_BIN`으로 지정).
 
 자세한 검증 범위는 [QA.md](QA.md), 변경 내역은 [CHANGELOG.md](CHANGELOG.md)를 보세요.

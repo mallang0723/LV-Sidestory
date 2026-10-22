@@ -4,7 +4,7 @@ import {createFakeSpindle} from './fake-spindle.js';
 import {createService,allPages,CURRENT} from '../src/lumiverse/service.js';
 import {shapeHostPrompt,locateHistory,fillNames,HISTORY_BLOCKED} from '../src/lumiverse/assembly.js';
 import {createRpc} from '../src/lumiverse/rpc.js';
-import {createLumiverseHost} from '../src/lumiverse/host.js';
+import {createLumiverseHost,chatIdFrom} from '../src/lumiverse/host.js';
 import {uuid} from '../src/lumiverse/ids.js';
 import {install} from '../src/backend.js';
 
@@ -23,16 +23,27 @@ function wire(seed={}){
   events:{on(e,fn){events.set(e,fn);return()=>events.delete(e);}},
  };
  const setState=(k,v)=>{state[k]=v;subs.get(k)?.(v);};
- return {api,ctx,setState,dispose};
+ return {api,ctx,setState,dispose,state,events};
 }
 function fakeDocument(){
- const el=()=>({style:{},hidden:false,textContent:'',classList:{add(){}},append(){},insertBefore(){},remove(){},setAttribute(){}});
+ const el=()=>({style:{},hidden:false,textContent:'',classList:{add(){}},append(){},insertBefore(){},remove(){},setAttribute(){},addEventListener(e,fn){if(e==='click')this.click=fn;}});
  return {createElement:el};
 }
-function makeHost(w){
+function makeHost(w,{tabId='tab-1',onActivate=()=>()=>{}}={}){
  const rpc=createRpc(w.ctx,{timeout:5000});
- const tab={root:{style:{},classList:{add(){}},append(){},insertBefore(){},clientWidth:420},tabId:'tab-1',onActivate:()=>()=>{}};
- return {rpc,host:createLumiverseHost({ctx:w.ctx,rpc,tab,document:fakeDocument(),realIndexedDB:null})};
+ const doc=fakeDocument(),made=[],create=doc.createElement;doc.createElement=t=>{const e=create(t);made.push(e);return e;};
+ const tab={root:{style:{},classList:{add(){}},append(){},insertBefore(){},clientWidth:420},tabId,onActivate};
+ const host=createLumiverseHost({ctx:w.ctx,rpc,tab,document:doc,realIndexedDB:null});
+ // made: [notice, notice text, diagnostic line, retry button]
+ return {rpc,host,notice:{box:made[0],text:made[1],info:made[2],retry:made[3]}};
+}
+/** Plays upstream's side of the contract: CHAT_CHANGED closes, the opener opens when a chat is active. */
+function upstreamStandIn(host){
+ const opens=[];let opened=false;
+ const open=()=>{if(!host.activeChatId())return;opens.push(host.activeChatId());opened=true;host.opened(true);};
+ host.SillyTavern.getContext().eventSource.on('CHAT_CHANGED',()=>{opened=false;host.opened(false);});
+ host.SillyTavern.getContext().eventSource.on('CHAT_CHANGED',open);
+ return {opens,open,get opened(){return opened;}};
 }
 
 test('paginated host lists are read to the end',async()=>{
@@ -281,4 +292,82 @@ test('id fallbacks: getRandomValues, then Math.random, both give RFC 4122 v4 str
  await withoutWebCrypto(['randomUUID'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
  await withoutWebCrypto(['randomUUID','getRandomValues'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
  assert.match(uuid(),V4);
+});
+
+test('active chat: a chat restored while upstream was still loading opens on mount (0.2.1 report)',async()=>{
+ const w=wire();w.setState('chat.active',{chatId:null});
+ const {host,rpc,notice}=makeHost(w);
+ assert.equal(notice.text.textContent,'Side Story를 불러오는 중이에요…','loading, not “open a chat”, before upstream mounts');
+ // Upstream's listeners are not registered yet: this CHAT_CHANGED reaches nobody.
+ w.setState('chat.active',{chatId:'chat-1'});
+ const up=upstreamStandIn(host);
+ host.mount({},up.open);
+ assert.deepEqual(up.opens,['chat-1']);assert.equal(notice.box.hidden,true);
+ host.cleanup();rpc.dispose();w.dispose();
+});
+
+test('active chat: opens on mount even when the drawer is closed, and when the drawer reopens on this tab without a tab switch',async()=>{
+ const w=wire();// chat-1 open, ui.drawer closed
+ let activate=null;const {host,rpc}=makeHost(w,{tabId:'spindle:ext:tab:side_story:2',onActivate:fn=>{activate=fn;return()=>{};}});
+ const up=upstreamStandIn(host);host.onActivate(up.open);
+ host.mount({},up.open);
+ assert.deepEqual(up.opens,['chat-1'],'mounted with a chat open: open now, not only when the drawer shows this tab');
+ // The chat is closed and a new one opened while nobody was notified; the drawer is then reopened on this tab
+ // (the drawer handle: selected tab unchanged, so no onActivate). The tab id may still carry the old counter.
+ w.setState('chat.active',{chatId:null});assert.equal(up.opened,false);
+ w.state['chat.active']={chatId:'chat-2'};
+ w.setState('ui.drawer',{open:true,tabId:'spindle:ext:tab:side_story:1'});
+ assert.deepEqual(up.opens,['chat-1','chat-2']);
+ assert.equal(typeof activate,'function');
+ host.cleanup();rpc.dispose();w.dispose();
+});
+
+test('active chat: falls back to ctx.getActiveChat, then to the CHAT_SWITCHED payload; the notice says what the host answered',async()=>{
+ // ctx.state.get throws (as for an unknown selector or a denied permission): getActiveChat answers.
+ {
+  const w=wire();w.ctx.state.get=k=>{if(k==='chat.active')throw Error('PERMISSION_DENIED:chats');return w.state[k];};
+  w.ctx.getActiveChat=()=>({chatId:'chat-1',characterId:'char-a'});
+  const {host,rpc}=makeHost(w);
+  assert.equal(host.activeChatId(),'chat-1');
+  assert.match(host.chatDiagnostics(),/state 오류: PERMISSION_DENIED:chats, getActiveChat 있음/);
+  host.cleanup();rpc.dispose();w.dispose();
+ }
+ // Neither store read works: the CHAT_SWITCHED {chatId} payload is used.
+ {
+  const w=wire();w.ctx.state.get=k=>{if(k==='chat.active')throw Error('SELECTOR_UNKNOWN:chat.active');return w.state[k];};
+  const subscribe=w.ctx.state.subscribe;w.ctx.state.subscribe=(k,fn)=>{if(k==='chat.active')throw Error('SELECTOR_UNKNOWN:chat.active');return subscribe(k,fn);};
+  w.ctx.host={lumiverseVersion:'1.2.5'};w.ctx.composer={};
+  const {host,rpc,notice}=makeHost(w);
+  const up=upstreamStandIn(host);host.mount({},up.open);
+  assert.equal(host.activeChatId(),'');
+  assert.equal(notice.text.textContent,'채팅을 열면 Side Story를 쓸 수 있어요.');
+  assert.equal(notice.info.textContent,'루미버스 1.2.5 (composer API 있음) · 채팅 감지: state 오류: SELECTOR_UNKNOWN:chat.active, getActiveChat 없음, 구독 오류: SELECTOR_UNKNOWN:chat.active, 이벤트 알림 없음');
+  w.events.get('CHAT_SWITCHED')({chatId:'chat-2'});
+  assert.equal(host.activeChatId(),'chat-2');assert.deepEqual(up.opens,['chat-2']);
+  w.events.get('CHAT_SWITCHED')({chatId:null});
+  assert.equal(host.activeChatId(),'');assert.equal(up.opened,false);
+  host.cleanup();rpc.dispose();w.dispose();
+ }
+ // A live store read that says "no chat" wins over an older event.
+ {
+  const w=wire();w.setState('chat.active',{chatId:null});
+  const {host,rpc}=makeHost(w);
+  w.events.get('CHAT_SWITCHED')({chatId:'chat-9'});
+  assert.equal(host.activeChatId(),'');
+  host.cleanup();rpc.dispose();w.dispose();
+ }
+ assert.deepEqual(chatIdFrom('c'),{ok:true,id:'c'});assert.deepEqual(chatIdFrom({id:'c'}),{ok:true,id:'c'});
+ assert.deepEqual(chatIdFrom({chatId:null}),{ok:true,id:''});assert.deepEqual(chatIdFrom(null),{ok:false,id:''});assert.deepEqual(chatIdFrom({}),{ok:false,id:''});
+});
+
+test('active chat: “다시 확인” checks again; a start failure keeps its message',async()=>{
+ const w=wire();w.setState('chat.active',{chatId:null});
+ const {host,rpc,notice}=makeHost(w);
+ const up=upstreamStandIn(host);host.mount({},up.open);
+ w.state['chat.active']={chatId:'chat-1'};// changed without a notification
+ notice.retry.click();
+ assert.deepEqual(up.opens,['chat-1']);
+ host.fail(Error('boom'));
+ assert.equal(notice.text.textContent,'Side Story를 시작하지 못했어요: boom');assert.equal(notice.box.hidden,false);
+ host.cleanup();rpc.dispose();w.dispose();
 });

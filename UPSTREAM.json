@@ -5,7 +5,7 @@
   "author": "Byulchaek contributors",
   "localCopy": "upstream/ (byte-identical; git blob SHA-1 checked against the upstream tree)",
   "port": {
-    "version": "0.2.1",
+    "version": "0.2.2",
     "host": "Lumiverse 1.2.5 (Spindle)",
     "adapter": "src/lumiverse/",
     "generated": "src/generated/side-story-app.js"

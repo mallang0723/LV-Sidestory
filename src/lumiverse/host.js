@@ -1,18 +1,53 @@
 // Lumiverse host adapter: the object upstream's code calls `stHost` (upstream/src/st-host.js is the
 // SillyTavern version). Same surface, Lumiverse underneath: reads go to the backend worker
 // (src/lumiverse/service.js), the active chat/persona/connection come from Spindle state selectors.
+//
+// Which chat is open (0.2.2). Lumiverse 1.2.5 and the staging branch expose the same three sources, read in
+// this order: ctx.state.get('chat.active').chatId, ctx.getActiveChat().chatId, and the CHAT_SWITCHED {chatId}
+// event. A source that throws or answers in an unknown shape is skipped, not taken as "no chat". Upstream
+// opens only when told (CHAT_CHANGED, tab activation); the host's tab activation fires only when the selected
+// drawer tab CHANGES, so reopening the drawer on Side Story (drawer handle) or a chat that was restored while
+// Side Story was still loading its settings left the "open a chat" notice up with a chat open. So the open
+// chat is also checked when the app mounts, when the drawer opens on this tab, when the notice comes into
+// view, and every 1.5 s while the notice is on screen; the notice says what the host answered.
 import {createArchiveIDB} from './idb.js';
 import {uuid} from './ids.js';
 
 const abortError=()=>new DOMException('중단됨','AbortError');
 const check=signal=>{if(signal?.aborted)throw abortError();};
+// Chat id from a host answer: a string, or an object with chatId (1.2.5/staging), activeChatId or id.
+// ok:false means "this source did not answer", so the next one is asked.
+export function chatIdFrom(value){
+ if(typeof value==='string')return {ok:true,id:value};
+ if(value&&typeof value==='object')for(const k of ['chatId','activeChatId','id'])if(k in value)return {ok:true,id:value[k]==null?'':String(value[k])};
+ return {ok:false,id:''};
+}
+const tabKey=id=>String(id??'').replace(/:\d+$/,'');
 const estimate=text=>{let a=0,b=0;for(const ch of text){if(ch.codePointAt(0)<128)a++;else b++;}return Math.ceil(a/3.5+b*1.5);};
 export const CURRENT='st-current';
 
 export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.document,realIndexedDB=globalThis.indexedDB,setTimer=globalThis.setTimeout.bind(globalThis),clearTimer=globalThis.clearTimeout.bind(globalThis)}){
  const cleanups=[];let previewNext=false,previewShown=false,running=null,isOpen=false,boundChat='',messageTimer=null,migrationNotice='';
  const state=key=>{try{return ctx.state?.get?.(key);}catch{return null;}};
- const activeChatId=()=>String(state('chat.active')?.chatId||'');
+ // ---- the open chat (see the note at the top)
+ const said={subscribe:{ok:false,id:''},event:{ok:false,id:''}},seen={};
+ let openApp=null,failed=false,noticeVisible=false,pollTimer=null;
+ const onUs=d=>!!d?.open&&!!d.tabId&&tabKey(d.tabId)===tabKey(tab.tabId);
+ const short=e=>String(e?.message||e).slice(0,80);
+ function ask(name,read){
+  let r;try{r=read();}catch(e){seen[name]='오류: '+short(e);return {ok:false,id:''};}
+  if(r===undefined){seen[name]='없음';return {ok:false,id:''};}
+  const v=chatIdFrom(r);seen[name]=v.ok?(v.id?'있음':'빈 값'):'모름('+(r===null?'null':typeof r)+')';return v;
+ }
+ function activeChatId(){
+  // Live reads of the host store come first; when either answers, an empty answer means "no chat".
+  const live=[ask('state',()=>ctx.state?.get?ctx.state.get('chat.active'):undefined),ask('getActiveChat',()=>typeof ctx.getActiveChat==='function'?ctx.getActiveChat():undefined)];
+  const hit=live.find(v=>v.ok&&v.id);if(hit)return hit.id;
+  if(live.some(v=>v.ok))return '';
+  // Neither works on this host: the last value the host pushed.
+  for(const v of [said.subscribe,said.event])if(v.ok&&v.id)return v.id;
+  return '';
+ }
  const activePersonaId=()=>String(state('persona.activeId')||'');
  const activeProfileId=()=>String(state('connections.active')?.activeProfileId||'');
  const call=(op,args,opts)=>rpc.call(op,args,opts);
@@ -39,11 +74,21 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
   getThumbnailUrl:(type,avatar)=>avatar?'/api/v1/characters/'+encodeURIComponent(avatar)+'/avatar':''};
  const SillyTavern={getContext:()=>context};
 
- const onChat=()=>{const next=activeChatId();if(next===boundChat)return;boundChat=next;cache={chatId:'',rows:[]};running?.abort?.();eventSource.emit('CHAT_CHANGED',next);};
+ const onChat=()=>{const next=activeChatId();if(next===boundChat){paintNotice();return;}boundChat=next;cache={chatId:'',rows:[]};running?.abort?.();eventSource.emit('CHAT_CHANGED',next);paintNotice();};
  boundChat=activeChatId();
- const personaHandlers=new Set();
- if(ctx.state?.subscribe){cleanups.push(ctx.state.subscribe('chat.active',onChat));cleanups.push(ctx.state.subscribe('persona.activeId',()=>{for(const fn of personaHandlers)try{fn();}catch{}}));cleanups.push(ctx.state.subscribe('chat.messageCount',scheduleMessages));}
- if(ctx.events?.on){for(const e of ['CHAT_SWITCHED'])cleanups.push(ctx.events.on(e,onChat));for(const e of ['MESSAGE_SENT','MESSAGE_EDITED','MESSAGE_DELETED','MESSAGE_SWIPED','GENERATION_ENDED'])cleanups.push(ctx.events.on(e,scheduleMessages));}
+ const personaHandlers=new Set(),hooked={};
+ const subscribe=(key,fn)=>{try{const off=ctx.state.subscribe(key,fn);if(typeof off==='function')cleanups.push(off);hooked[key]=true;}catch(e){hooked[key]='오류: '+short(e);}};
+ const listen=(event,fn)=>{try{const off=ctx.events.on(event,fn);if(typeof off==='function')cleanups.push(off);hooked[event]=true;}catch(e){hooked[event]='오류: '+short(e);}};
+ if(ctx.state?.subscribe){
+  subscribe('chat.active',v=>{said.subscribe=chatIdFrom(v);onChat();});
+  subscribe('persona.activeId',()=>{for(const fn of personaHandlers)try{fn();}catch{}});
+  subscribe('chat.messageCount',scheduleMessages);
+  subscribe('ui.drawer',v=>{if(onUs(v))reconcile();});
+ }
+ if(ctx.events?.on){
+  listen('CHAT_SWITCHED',p=>{said.event=chatIdFrom(p&&typeof p==='object'&&'chatId' in p?p.chatId??'':p);onChat();});
+  for(const e of ['MESSAGE_SENT','MESSAGE_EDITED','MESSAGE_DELETED','MESSAGE_SWIPED','GENERATION_ENDED'])listen(e,scheduleMessages);
+ }
 
  // ---- upstream stHost.request routes
  async function request(path,body,signal){
@@ -117,12 +162,49 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
  const root=tab.root;
  root.classList?.add('side-story-lumiverse');
  Object.assign(root.style,{display:'block',position:'relative',height:'calc(100% + 12px)',margin:'-12px -12px 0',minHeight:'320px'});
+ // The notice shown while the app is closed. Until upstream has mounted it says "loading"; after that, with no
+ // chat found, it asks to open a chat and shows one small line on what the host answered (for bug reports),
+ // plus a button that checks again.
  const placeholder=doc.createElement('div');
- placeholder.setAttribute('role','status');
+ placeholder.setAttribute('role','status');placeholder.className='side-story-lumiverse-notice';
  Object.assign(placeholder.style,{padding:'32px 20px',textAlign:'center',color:'var(--lumiverse-text-muted, #999)',font:'15px/1.6 var(--lumiverse-font-family, system-ui, sans-serif)'});
- placeholder.textContent='채팅을 열면 Side Story를 쓸 수 있어요.';
+ const noticeText=doc.createElement('p'),noticeInfo=doc.createElement('small'),noticeRetry=doc.createElement('button');
+ Object.assign(noticeText.style,{margin:'0 0 12px'});
+ Object.assign(noticeInfo.style,{display:'block',fontSize:'13px',lineHeight:'1.5',opacity:'0.8',wordBreak:'break-word',userSelect:'text'});
+ noticeRetry.type='button';noticeRetry.textContent='다시 확인';
+ Object.assign(noticeRetry.style,{marginTop:'12px',minHeight:'44px',padding:'0 16px',font:'inherit',fontSize:'15px',color:'var(--lumiverse-text, inherit)',background:'transparent',border:'1px solid var(--lumiverse-border-neutral, rgba(128,128,128,.4))',borderRadius:'8px',cursor:'pointer'});
+ noticeRetry.addEventListener?.('click',()=>reconcile());
+ noticeText.textContent='Side Story를 불러오는 중이에요…';noticeInfo.hidden=true;noticeRetry.hidden=true;
+ placeholder.append(noticeText,noticeInfo,noticeRetry);
  root.append(placeholder);
- const drawerOnUs=()=>{const d=state('ui.drawer');return !!d?.open&&d.tabId===tab.tabId;};
+ const version=String(ctx.host?.lumiverseVersion||'?');
+ const extras=['composer','tts'].filter(k=>ctx[k]&&typeof ctx[k]==='object');
+ /** What the host answered about the open chat, in one line. */
+ function chatDiagnostics(){
+  activeChatId();
+  const sub=hooked['chat.active']===true?(said.subscribe.ok?(said.subscribe.id?'있음':'빈 값'):'알림 없음'):(hooked['chat.active']||'없음');
+  const ev=hooked.CHAT_SWITCHED===true?(said.event.ok?(said.event.id?'있음':'빈 값'):'알림 없음'):(hooked.CHAT_SWITCHED||'없음');
+  return `루미버스 ${version}${extras.length?' ('+extras.join('·')+' API 있음)':''} · 채팅 감지: state ${seen.state||'없음'}, getActiveChat ${seen.getActiveChat||'없음'}, 구독 ${sub}, 이벤트 ${ev}`;
+ }
+ function paintNotice(){
+  if(failed||!openApp)return;
+  noticeText.textContent='채팅을 열면 Side Story를 쓸 수 있어요.';
+  noticeInfo.textContent=chatDiagnostics();noticeInfo.hidden=false;noticeRetry.hidden=false;
+ }
+ /** Opens the app when a chat is open and it is not showing; catches up on a chat change nobody heard. */
+ function reconcile(){
+  if(!openApp||failed)return;
+  const id=activeChatId();
+  if(id!==boundChat){onChat();return;}
+  if(id&&!isOpen){openApp();return;}
+  if(!isOpen)paintNotice();
+ }
+ // While the notice is on screen, look again now and then (a host whose notifications never arrive).
+ function poll(){clearTimer(pollTimer);pollTimer=null;if(!noticeVisible||isOpen||!openApp||failed)return;pollTimer=setTimer(()=>{pollTimer=null;reconcile();poll();},1500);}
+ if(typeof globalThis.IntersectionObserver==='function'&&typeof placeholder.nodeType==='number'){
+  const seenObserver=new IntersectionObserver(entries=>{noticeVisible=entries.some(e=>e.isIntersecting);if(noticeVisible)reconcile();poll();});
+  seenObserver.observe(placeholder);cleanups.push(()=>seenObserver.disconnect());
+ }
 
  const host={
   embedded:true,SillyTavern,
@@ -136,16 +218,19 @@ export function createLumiverseHost({ctx,rpc,tab,document:doc=globalThis.documen
   storage:{async get(){return {sideStory:await call('settingsGet',{})||{}};},async patch(value){await call('settingsSet',{value:value.sideStory});}},
   setTimeout:setTimer,clearTimeout:clearTimer,
   width:()=>root.clientWidth||0,
-  opened(flag){isOpen=!!flag;placeholder.hidden=isOpen;if(isOpen&&cache.chatId!==activeChatId())loadMessages().catch(()=>{});},
+  opened(flag){isOpen=!!flag;placeholder.hidden=isOpen;if(isOpen&&cache.chatId!==activeChatId())loadMessages().catch(()=>{});if(!isOpen)paintNotice();poll();},
   onPersonaChange(fn){personaHandlers.add(fn);cleanups.push(()=>personaHandlers.delete(fn));},
-  onActivate(fn){const off=tab.onActivate?.(fn);if(typeof off==='function')cleanups.push(off);},
-  mount(element,open){root.insertBefore(element,placeholder);if(drawerOnUs())open();},
+  onActivate(fn){const off=tab.onActivate?.(()=>{if(boundChat!==activeChatId())onChat();fn();});if(typeof off==='function')cleanups.push(off);},
+  // Upstream is ready: open now when a chat is open (whether or not the drawer shows this tab, the same as on a
+  // chat change), and catch up on a chat change that came while upstream was still loading.
+  mount(element,open){root.insertBefore(element,placeholder);openApp=open;reconcile();if(!isOpen)paintNotice();},
+  chatDiagnostics,
   requestPreview(){previewNext=true;previewShown=false;},
   takePreviewShown(){const v=previewShown;previewShown=false;previewNext=false;return v;},
   takeMigrationNotice(){const n=migrationNotice;migrationNotice='';return n;},
-  fail(error){placeholder.hidden=false;placeholder.textContent='Side Story를 시작하지 못했어요: '+(error?.message||error);},
+  fail(error){failed=true;placeholder.hidden=false;noticeText.textContent='Side Story를 시작하지 못했어요: '+(error?.message||error);noticeInfo.textContent=chatDiagnostics();noticeInfo.hidden=false;noticeRetry.hidden=true;},
   onCleanup(fn){cleanups.push(fn);},
-  cleanup(){clearTimer(messageTimer);running?.abort?.();for(const fn of cleanups.splice(0).reverse())try{fn?.();}catch{}placeholder.remove();},
+  cleanup(){clearTimer(messageTimer);clearTimer(pollTimer);pollTimer=null;openApp=null;running?.abort?.();for(const fn of cleanups.splice(0).reverse())try{fn?.();}catch{}placeholder.remove();},
  };
  return host;
 }

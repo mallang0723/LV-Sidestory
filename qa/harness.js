@@ -25,24 +25,54 @@ const old=[
 const speak={id:'qa-speak',mode:'speak',title:'말하기 카드',request:'질문들',chatId:'chat-1',chatName:'첫 채팅',characterIds:['char-a'],characterNames:['에이든'],content:Array.from({length:3},(_,i)=>`<sideb-response><request>질문 ${i+1}</request><spoken>${Array.from({length:12},(_,j)=>`대답 ${i+1}-${j+1}. 에이든은 천천히 말을 골랐다.`).join('\n\n')}</spoken><inner>속마음 ${i+1}</inner></sideb-response>`).join('\n'),status:'complete',createdAt:Date.now()-1000,favorite:false,settings:{mode:'speak'},action:'new',parentId:null,seriesId:null,tags:[]};
 const api=createFakeSpindle({storage:{...Object.fromEntries(old.map(r=>['records/'+r.id+'.json',JSON.stringify(r)])),'archive/qa-speak.json':JSON.stringify(speak)},onSend:p=>setTimeout(()=>frontend?.(p),5),rawText:input=>window.qaReply==='translate'?translate(input):replies[window.qaReply]||replies.story,rawDelay:()=>window.qaDelay??120});
 install(api);
-const state={'chat.active':{chatId:'chat-1',characterId:'char-a'},'persona.activeId':'persona-1','connections.active':{activeProfileId:'conn-1'},'ui.drawer':{open:true,tabId:'side_story:tab'}};
-const subs=new Map(),activators=new Set();
+// ?scenario= picks how the host reports the active chat (scripts/chat-detect-qa.mjs):
+//  (none)    chat-1 open, drawer open on Side Story — the usual screens.
+//  late      no chat and drawer closed at setup; the chat arrives while Side Story is still starting, then the
+//            drawer is reopened on Side Story without a tab switch (the drawer handle) — no onActivate.
+//  closed    chat-1 already open but the drawer closed at setup; later reopened on Side Story the same way.
+//  silent    no chat and drawer closed at setup; the chat opens and the drawer shows Side Story without any
+//            host notification (no subscription callback, no event, no onActivate).
+//  fallback  ctx.state.get('chat.active') throws; the chat is only in ctx.getActiveChat().
+//  event     ctx.state has no 'chat.active' and there is no getActiveChat; only CHAT_SWITCHED {chatId} says it.
+//  none      no chat anywhere: the notice and its diagnostic line.
+const drawer=document.querySelector('.wrapper'),tabHost=document.getElementById('tab-host');
+const scenario=new URLSearchParams(location.search).get('scenario')||'';
+const noChat={chatId:null,characterId:null};
+const state={'chat.active':['late','none','silent'].includes(scenario)?noChat:{chatId:'chat-1',characterId:'char-a'},'persona.activeId':'persona-1','connections.active':{activeProfileId:'conn-1'},'ui.drawer':{open:!['late','closed','silent'].includes(scenario),tabId:'side_story:tab'}};
+const subs=new Map(),activators=new Set(),eventHandlers=new Map();
+const readState=k=>{
+ if(k==='chat.active'&&scenario==='fallback')throw Error('PERMISSION_DENIED:chats — QA stand-in');
+ if(k==='chat.active'&&scenario==='event')throw Error('SELECTOR_UNKNOWN:chat.active');
+ return state[k];
+};
 const ctx={
- ui:{registerDrawerTab(){const root=document.createElement('div');document.getElementById('tab-host').append(root);return {root,tabId:'side_story:tab',onActivate(fn){activators.add(fn);return()=>activators.delete(fn);},destroy(){root.remove();}};}},
+ ui:{registerDrawerTab(){const root=document.createElement('div');tabHost.append(root);return {root,tabId:'side_story:tab',onActivate(fn){activators.add(fn);return()=>activators.delete(fn);},destroy(){root.remove();}};}},
  onBackendMessage(fn){frontend=fn;return()=>{frontend=null;};},
  sendToBackend(m){setTimeout(()=>api.deliver(m),5);},
- state:{get:k=>state[k],subscribe(k,fn){if(!subs.has(k))subs.set(k,new Set());subs.get(k).add(fn);return()=>subs.get(k).delete(fn);}},
- events:{on(){return()=>{};}},
+ state:{get:readState,subscribe(k,fn){readState(k);if(!subs.has(k))subs.set(k,new Set());subs.get(k).add(fn);return()=>subs.get(k).delete(fn);}},
+ events:{on(e,fn){if(!eventHandlers.has(e))eventHandlers.set(e,new Set());eventHandlers.get(e).add(fn);return()=>eventHandlers.get(e).delete(fn);}},
+ host:{descriptorVersion:1,lumiverseVersion:'1.2.5'},
 };
+if(scenario==='fallback')ctx.getActiveChat=()=>({chatId:'chat-1',characterId:'char-a'});
+// A closed drawer is not in the page: Lumiverse unmounts the drawer panel (ViewportDrawer renders it only while
+// drawerOpen), so the tab root is detached and attached again, not just hidden.
+const showDrawer=()=>{if(state['ui.drawer']?.open){if(!drawer.isConnected)document.body.append(drawer);}else drawer.remove();};
+showDrawer();
 let dispose=setup(ctx);
+// The chat restored by the host while Side Story is still loading its settings from the backend.
+if(scenario==='late')state['chat.active']={chatId:'chat-1',characterId:'char-a'},[...(subs.get('chat.active')||[])].forEach(fn=>fn(state['chat.active']));
 // Host theme variable sets produced by the host's own theme engine (see qa/host-themes.json).
 const hostThemes=await (await fetch('./host-themes.json')).json();
 function setTheme(name){const set=hostThemes[name];if(!set)throw Error('unknown theme '+name);const root=document.documentElement;for(const p of [...root.style])if(p.startsWith('--lumiverse-'))root.style.removeProperty(p);for(const [k,v] of Object.entries(set))root.style.setProperty(k,v);}
 setTheme('default-dark');
 window.qa={api,ctx,setTheme,themes:Object.keys(hostThemes).filter(k=>!k.startsWith('_')),get dispose(){return dispose;},
  // Simulates closing and reopening Lumiverse: the extension is set up again on the same server data.
- remount(){dispose();document.getElementById('tab-host').replaceChildren();dispose=setup(ctx);},
+ remount(){dispose();tabHost.replaceChildren();dispose=setup(ctx);},
  shadow:()=>document.getElementById('st-sidestory-root')?.shadowRoot,
- setState(k,v){state[k]=v;for(const fn of subs.get(k)||[])fn(v);},
+ scenario,
+ setState(k,v){state[k]=v;if(k==='ui.drawer')showDrawer();for(const fn of subs.get(k)||[])fn(v);},
+ // Changes host state without telling anyone (a host whose notifications never arrive).
+ setSilently(k,v){state[k]=v;if(k==='ui.drawer')showDrawer();},
+ emit(e,payload){for(const fn of eventHandlers.get(e)||[])fn(payload);},
  activate(){for(const fn of activators)fn();},
 };
