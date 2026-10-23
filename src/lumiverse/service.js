@@ -2,7 +2,7 @@
 // stHost.request('/chats/…') calls into these operations; everything that needs a Spindle permission
 // happens here. Lumiverse data comes back in the shapes upstream's st-host.js produces.
 import {shapeHostPrompt,fillNames,eligibleHistory} from './assembly.js';
-import {migrateRecords,identitySourceIds} from './migrate.js';
+import {migrateRecords,collapsedImports,identitySourceIds} from './migrate.js';
 
 export const CURRENT='st-current'; // upstream's id for "use the host's own prompt assembly"
 const PAGE=100;
@@ -196,9 +196,25 @@ export function createService(api,{now=()=>Date.now()}={}){
    await write(u,'migration-0.2.0.json',done);return done;
   }catch(e){return {error:String(e?.message||e),retry:true};}
  }
+ // Upgrading from the first 0.2.0 build: its completion marker is already there but it had dropped the 0.1.x
+ // edit (or the original) of an ST import. Add what is missing next to what the archive holds now; nothing in
+ // the archive is replaced. Done once: the marker is written after every read and write succeeded.
+ async function repairImports(u){
+  if(await read(u,'repair-edited-imports-1.json'))return null;
+  try{
+   const old=(await api.userStorage.list('records/',u)).filter(p=>/^[\w-]+\.json$/.test(p.replace(/^records\//,'')));
+   const rows=[];for(const p of old){const r=await read(u,p.startsWith('records/')?p:'records/'+p);if(r)rows.push(r);}
+   const archive=[];for(const p of await archiveFiles(u)){const r=await read(u,p);if(r?.id)archive.push(r);}
+   const missing=collapsedImports(rows,archive);
+   const result=migrateRecords(missing,archive.map(r=>({id:r.id,content:r.content,lvLegacy:r.lvLegacy})),{});
+   for(const r of result.records)await write(u,fileOf(r.id),r);
+   const done={at:now(),checked:missing.length,restored:result.records.length};
+   await write(u,'repair-edited-imports-1.json',done);return done;
+  }catch(e){return {error:String(e?.message||e),retry:true};}
+ }
  const PAGE_BYTES=2_000_000;
  async function archiveList(u,{cursor=0}={}){
-  const migration=cursor?null:await migrate(u);if(!cursor)await repairSources(u);
+  const migration=cursor?null:await migrate(u);if(!cursor){await repairSources(u);if(!migration?.retry)await repairImports(u);}
   const files=(await archiveFiles(u)).sort();const records=[];let size=0,i=Math.max(0,Number(cursor)||0);
   for(;i<files.length;i++){const r=await read(u,files[i]);if(!r?.id)continue;const n=JSON.stringify(r).length;if(records.length&&size+n>PAGE_BYTES)break;records.push(r);size+=n;}
   return {records,next:i<files.length?i:null,migration};

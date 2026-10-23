@@ -242,6 +242,64 @@ test('unverifiable history fails closed for 안 넣음 / 최근 N, and is left a
  assert.equal(shapeHostPrompt({dryRun:dry,source,plan:{limit:5},quietPrompt:'Q'}).blocked,undefined,'asking for more than there is changes nothing');
 });
 
+// ---- review C1-R1: the same sentence in the history and in an injected row
+const RAWCALL=api=>api.calls.find(c=>c.name==='generate.raw');
+const genPayload=history=>({connectionId:CURRENT,useSillyTavernContext:true,quietPrompt:'Q',messages:[],parameters:{maxTokens:100},history});
+const noTrim={limit:null,anchor:null,exclude:false,append:null};
+
+test('an injected row with the same text as a chat line does not make “본편 안 넣음” send the real chat (review C1-R1)',async()=>{
+ const chat=[turn(0,false,'안녕')];
+ // The injection (a different role) sits after the real line, and also before it.
+ for(const rows of [[{role:'assistant',content:'안녕'},{role:'system',content:'안녕'}],[{role:'system',content:'안녕'},{role:'assistant',content:'안녕'}]]){
+  const r=shapeHostPrompt({dryRun:{messages:rows,breakdown:[]},source:chat,plan:{exclude:true},quietPrompt:'Q'});
+  assert.equal(r.blocked,undefined);assert.equal(r.meta.historyMapping,'matched');
+  assert.deepEqual(r.messages,[{role:'system',content:'안녕'},{role:'user',content:'Q'}],'only the injection stays');
+ }
+ const api=createFakeSpindle({messages:{'chat-1':chat},dryRun:()=>({messages:[{role:'assistant',content:'안녕'},{role:'system',content:'안녕'}],breakdown:[{type:'extension',role:'system',content:'안녕'}],parameters:{}})});
+ await createService(api).handle(U,'generate',{runId:'r1',chatId:'chat-1',payload:genPayload({...noTrim,exclude:true})});
+ assert.deepEqual(RAWCALL(api).args.messages,[{role:'system',content:'안녕'},{role:'user',content:'Q'}]);
+});
+
+test('a short reply repeated by an injection later in the prompt keeps the real chat line out (review C1-R1, real-host shape)',()=>{
+ const source=[turn(0,false,'안녕'),turn(1,true,'응'),turn(2,false,'반가워')];
+ const dry={messages:[{role:'system',content:'P'},{role:'assistant',content:'안녕'},{role:'user',content:'응'},{role:'assistant',content:'반가워'},{role:'system',content:'반가워'}],breakdown:[{type:'block',content:'P'}]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.deepEqual(r.messages.map(m=>m.content),['P','반가워','Q']);assert.equal(r.messages[1].role,'system');
+});
+
+test('when the same text could be the chat line in more than one place, “안 넣음/최근 N” is refused instead of guessing (review C1-R1)',async()=>{
+ const chat=[turn(0,false,'안녕')];
+ const dup={messages:[{role:'system',content:'P'},{role:'assistant',content:'안녕'},{role:'assistant',content:'안녕'}],breakdown:[]};
+ const history=locateHistory(dup,chat);
+ assert.equal(history.reliable,false);assert.equal(history.ambiguous,true);
+ const excluded=shapeHostPrompt({dryRun:dup,source:chat,plan:{exclude:true},quietPrompt:'Q'});
+ assert.equal(excluded.blocked,HISTORY_BLOCKED);assert.equal(excluded.meta.historyMapping,'ambiguous');
+ const three=[turn(0,true,'응'),turn(1,false,'응'),turn(2,false,'안녕')];
+ const dry3={messages:[{role:'user',content:'응'},{role:'assistant',content:'응'},{role:'assistant',content:'안녕'},{role:'assistant',content:'안녕'}],breakdown:[]};
+ assert.equal(shapeHostPrompt({dryRun:dry3,source:three,plan:{limit:1},quietPrompt:'Q'}).blocked,HISTORY_BLOCKED);
+ assert.equal(shapeHostPrompt({dryRun:dup,source:chat,plan:{limit:5},quietPrompt:'Q'}).blocked,undefined,'asking for more than there is changes nothing');
+ assert.equal(shapeHostPrompt({dryRun:dup,source:chat,plan:{...noTrim},quietPrompt:'Q'}).blocked,undefined,'“전체” sends the prompt as the host built it');
+ // And through the service: nothing is sent.
+ const api=createFakeSpindle({messages:{'chat-1':chat},dryRun:()=>({...dup,parameters:{}})});
+ await assert.rejects(createService(api).handle(U,'generate',{runId:'r2',chatId:'chat-1',payload:genPayload({...noTrim,exclude:true})}),/본편 대화를 정확히 가려내지 못했어요/);
+ assert.equal(RAWCALL(api),undefined);
+});
+
+test('repeated chat lines that line up one-to-one are not ambiguous',()=>{
+ const source=[turn(0,false,'...'),turn(1,true,'응'),turn(2,false,'...'),turn(3,true,'응')];
+ const dry={messages:[{role:'system',content:'P'},{role:'assistant',content:'...'},{role:'user',content:'응'},{role:'assistant',content:'...'},{role:'user',content:'응'}],breakdown:[]};
+ const history=locateHistory(dry,source);
+ assert.equal(history.reliable,true);assert.deepEqual(history.indices,[1,2,3,4]);
+ assert.deepEqual(shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'}).messages.map(m=>m.content),['P','Q']);
+});
+
+test('a chat line whose role was changed by the host is not recognised as chat history (fail closed)',()=>{
+ const source=[turn(0,false,'안녕'),turn(1,true,'응')];
+ const dry={messages:[{role:'system',content:'P'},{role:'system',content:'안녕'},{role:'user',content:'응'}],breakdown:[]};
+ const r=shapeHostPrompt({dryRun:dry,source,plan:{exclude:true},quietPrompt:'Q'});
+ assert.equal(r.blocked,HISTORY_BLOCKED);assert.equal(r.meta.historyMapping,'unverified');
+});
+
 test('the service refuses to send when exclusion cannot be honoured',async()=>{
  const api=createFakeSpindle({dryRun:()=>({messages:[{role:'system',content:'P'},{role:'assistant',content:'바뀐 첫 메시지'},{role:'user',content:'바뀐 둘째'}],breakdown:[],contextClipStats:{enabled:false}})});
  const service=createService(api);

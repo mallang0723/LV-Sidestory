@@ -119,7 +119,9 @@ export function migrateRecord(old,context={}){
 export function migrateRecords(oldRows,existing=[],context={}){
  const existingRows=[...(existing instanceof Set?[...existing].map(id=>({id})):existing||[])];
  const taken=new Set(existingRows.map(r=>r.id)),done=new Set(existingRows.map(r=>r.lvLegacy?.id).filter(Boolean));
- const out=[],idMap=new Map();let skipped=0,failed=0;
+ // Records moved by an earlier pass (interrupted, or by an earlier build) are not converted again, but edits that
+ // are still to come point at their 0.1.x id: remember which archive id they got so those edits stay attached.
+ const out=[],idMap=new Map(existingRows.filter(r=>r.lvLegacy?.id).map(r=>[r.lvLegacy.id,r.id]));let skipped=0,failed=0;
  for(const old of Array.isArray(oldRows)?oldRows:[]){
   if(old?.id&&done.has(old.id)){skipped++;continue;}
   let r=null;try{r=migrateRecord(old,context);}catch{r=null;}
@@ -139,4 +141,23 @@ export function migrateRecords(oldRows,existing=[],context={}){
   if(mapped&&mapped!==r.id)r.parentId=mapped;else{r.parentId=null;if(r.action==='edit')r.action='new';}
  }
  return {records:out,skipped,failed};
+}
+
+/**
+ * The first 0.2.0 build gave every record that came from an ST backup the upstream id, so an import and its
+ * 0.1.x edit (and an import restored twice) collapsed into one archive record and the others were dropped
+ * (their 0.1.x files stayed). Returns those 0.1.x records: ones with an ST original whose upstream id is held by
+ * an archive record that the old build wrote (lvLegacy has no upstreamId, which every later build adds) for a
+ * different 0.1.x record, and that have no archive record of their own. Records migrated by a later build are
+ * never returned, so one the user deleted from the archive does not come back.
+ */
+export function collapsedImports(oldRows,archiveRows){
+ const archive=Array.isArray(archiveRows)?archiveRows:[],legacyIds=new Set(archive.map(r=>r?.lvLegacy?.id).filter(Boolean));
+ const byId=new Map(archive.filter(r=>r?.id).map(r=>[r.id,r]));
+ return (Array.isArray(oldRows)?oldRows:[]).filter(old=>{
+  const upstreamId=old?.upstreamArchive?.record?.id;
+  if(typeof old?.id!=='string'||typeof upstreamId!=='string'||legacyIds.has(old.id))return false;
+  const holder=byId.get(upstreamId);
+  return !!holder&&holder.migratedFrom==='lumiverse-0.1'&&!!holder.lvLegacy?.id&&holder.lvLegacy.id!==old.id&&!holder.lvLegacy.upstreamId;
+ });
 }

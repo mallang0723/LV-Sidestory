@@ -22,14 +22,55 @@ function historyTurns(source) {
   }
   return turns;
 }
-function sameTurn(message, turn) {
-  const a = clean(textOf(message)), b = clean(turn?.content);
+var sameText = (a, b) => {
   if (!b)
     return false;
   if (a === b)
     return true;
   const at = a.length - b.length;
   return at > 0 && a.endsWith(b) && /^[^\n]{1,80}:\s*$/.test(a.slice(0, at));
+};
+var roleOfTurn = (t) => t?.is_user ? "user" : "assistant";
+function sameTurn(message, turn) {
+  return sameText(clean(textOf(message)), clean(turn?.content));
+}
+function placements(messages, turns) {
+  const rows = messages.map((m) => ({ role: m?.role, text: clean(textOf(m)) })), want = turns.map((t) => ({ role: roleOfTurn(t), text: clean(t.content) }));
+  const R = rows.length, K = want.length;
+  if (!K || !R)
+    return { count: 0, at: [] };
+  const fits = (m, r) => rows[r].role === want[m].role && sameText(rows[r].text, want[m].text);
+  const table = [];
+  for (let m = 0;m < K; m++) {
+    const cur = new Uint8Array(R), prev = m ? table[m - 1] : null;
+    let before = 0;
+    for (let r = 0;r < R; r++) {
+      if (fits(m, r))
+        cur[r] = m ? Math.min(2, before) : 1;
+      if (prev)
+        before = Math.min(2, before + prev[r]);
+    }
+    table.push(cur);
+  }
+  const last = table[K - 1];
+  let count = 0;
+  for (let r = 0;r < R; r++)
+    count = Math.min(2, count + last[r]);
+  if (count !== 1)
+    return { count, at: [] };
+  const at = new Array(K);
+  let limit = R;
+  for (let m = K - 1;m >= 0; m--) {
+    let hit = -1;
+    for (let r = 0;r < limit; r++)
+      if (table[m][r]) {
+        hit = r;
+        break;
+      }
+    at[m] = hit;
+    limit = hit;
+  }
+  return { count, at };
 }
 function locateHistory(dryRun, source) {
   const messages = Array.isArray(dryRun?.messages) ? dryRun.messages : [], turns = historyTurns(source);
@@ -43,8 +84,18 @@ function locateHistory(dryRun, source) {
       j--;
     }
   const matchedMessages = pairs.reduce((n, p) => n + p.row.count, 0);
-  const reliable = turns.length === 0 || pairs.length > 0 && pairs.at(-1).row === turns.at(-1) && matchedMessages === expectedMessages || expectedMessages === 0 && pairs.length === 0;
-  return { indices: pairs.map((p) => p.at), rows: pairs.map((p) => p.row), expected: expectedMessages, matched: matchedMessages, dropped, reliable };
+  let reliable = turns.length === 0 || pairs.length > 0 && pairs.at(-1).row === turns.at(-1) && matchedMessages === expectedMessages || expectedMessages === 0 && pairs.length === 0;
+  let indices = pairs.map((p) => p.at), ambiguous = false;
+  if (reliable && pairs.length) {
+    const placed = placements(messages, pairs.map((p) => p.row));
+    if (placed.count === 1)
+      indices = placed.at;
+    else {
+      reliable = false;
+      ambiguous = placed.count > 1;
+    }
+  }
+  return { indices, rows: pairs.map((p) => p.row), expected: expectedMessages, matched: matchedMessages, dropped, reliable, ambiguous };
 }
 function anchorIndex(anchor, source) {
   if (!anchor)
@@ -78,13 +129,13 @@ function stripWorldInfo(messages, breakdown, removed, protect = new Set) {
   }
   return { stripped, unmatched };
 }
-var HISTORY_BLOCKED = "\uB8E8\uBBF8\uBC84\uC2A4\uAC00 \uC870\uB9BD\uD55C \uD504\uB86C\uD504\uD2B8\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \uC815\uD655\uD788 \uAC00\uB824\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694(\uC815\uADDC\uC2DD\xB7\uB9E4\uD06C\uB85C\uB85C \uBC14\uB010 \uBA54\uC2DC\uC9C0, \uB2E4\uB978 \uBE14\uB85D\uACFC \uD569\uCCD0\uC9C4 \uBA54\uC2DC\uC9C0 \uB4F1). \u201C\uBCF8\uD3B8 \uB300\uD654 \uC548 \uB123\uC74C/\uCD5C\uADFC N\uAC1C\u201D\uB97C \uC9C0\uD0AC \uC218 \uC5C6\uC5B4\uC11C \uBCF4\uB0B4\uC9C0 \uC54A\uC558\uC5B4\uC694. \uCC38\uACE0 \uC790\uB8CC\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \u201C\uC804\uCCB4\u201D\uB85C \uB450\uAC70\uB098, \uC124\uC815 \u203A API \uC5F0\uACB0\uC5D0\uC11C \uB2E4\uB978 \uC5F0\uACB0 \uD504\uB85C\uD544(Side Story\uAC00 \uC790\uB8CC\uB97C \uC9C1\uC811 \uC870\uB9BD)\uC744 \uACE8\uB77C \uC8FC\uC138\uC694.";
+var HISTORY_BLOCKED = "\uB8E8\uBBF8\uBC84\uC2A4\uAC00 \uC870\uB9BD\uD55C \uD504\uB86C\uD504\uD2B8\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \uC815\uD655\uD788 \uAC00\uB824\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694(\uC815\uADDC\uC2DD\xB7\uB9E4\uD06C\uB85C\uB85C \uBC14\uB010 \uBA54\uC2DC\uC9C0, \uB2E4\uB978 \uBE14\uB85D\uACFC \uD569\uCCD0\uC9C4 \uBA54\uC2DC\uC9C0, \uAC19\uC740 \uBB38\uC7A5\uC774 \uD504\uB86C\uD504\uD2B8\uC5D0 \uC5EC\uB7EC \uBC88 \uB098\uC624\uB294 \uACBD\uC6B0 \uB4F1). \u201C\uBCF8\uD3B8 \uB300\uD654 \uC548 \uB123\uC74C/\uCD5C\uADFC N\uAC1C\u201D\uB97C \uC9C0\uD0AC \uC218 \uC5C6\uC5B4\uC11C \uBCF4\uB0B4\uC9C0 \uC54A\uC558\uC5B4\uC694. \uCC38\uACE0 \uC790\uB8CC\uC5D0\uC11C \uBCF8\uD3B8 \uB300\uD654\uB97C \u201C\uC804\uCCB4\u201D\uB85C \uB450\uAC70\uB098, \uC124\uC815 \u203A API \uC5F0\uACB0\uC5D0\uC11C \uB2E4\uB978 \uC5F0\uACB0 \uD504\uB85C\uD544(Side Story\uAC00 \uC790\uB8CC\uB97C \uC9C1\uC811 \uC870\uB9BD)\uC744 \uACE8\uB77C \uC8FC\uC138\uC694.";
 function shapeHostPrompt({ dryRun, source = [], plan = null, quietPrompt = "", auxiliaryTurns = [], selectedLoreOnly = false }) {
   const messages = (Array.isArray(dryRun?.messages) ? dryRun.messages : []).map((m) => ({ role: m.role, content: m.content, ...m.name ? { name: m.name } : {} }));
   const breakdown = Array.isArray(dryRun?.breakdown) ? dryRun.breakdown : [];
   const history = locateHistory(dryRun, source), removed = new Set;
   const report = { before: history.indices.length, after: history.indices.length, anchor: null };
-  const meta = { host: "lumiverse", model: dryRun?.model ?? null, provider: dryRun?.provider ?? null, historyRows: history.indices.length, historyMessages: `${history.matched}/${history.expected}`, historyMapping: history.reliable ? "matched" : "unverified" };
+  const meta = { host: "lumiverse", model: dryRun?.model ?? null, provider: dryRun?.provider ?? null, historyRows: history.indices.length, historyMessages: `${history.matched}/${history.expected}`, historyMapping: history.reliable ? "matched" : history.ambiguous ? "ambiguous" : "unverified" };
   let kept = history.indices.slice(), blocked = null;
   const trims = !!plan && (plan.exclude || Number.isInteger(plan.limit) && plan.limit >= 0);
   if (plan && !history.reliable) {
@@ -301,7 +352,7 @@ function migrateRecord(old, context = {}) {
 function migrateRecords(oldRows, existing = [], context = {}) {
   const existingRows = [...existing instanceof Set ? [...existing].map((id) => ({ id })) : existing || []];
   const taken = new Set(existingRows.map((r) => r.id)), done = new Set(existingRows.map((r) => r.lvLegacy?.id).filter(Boolean));
-  const out = [], idMap = new Map;
+  const out = [], idMap = new Map(existingRows.filter((r) => r.lvLegacy?.id).map((r) => [r.lvLegacy.id, r.id]));
   let skipped = 0, failed = 0;
   for (const old of Array.isArray(oldRows) ? oldRows : []) {
     if (old?.id && done.has(old.id)) {
@@ -354,6 +405,17 @@ function migrateRecords(oldRows, existing = [], context = {}) {
     }
   }
   return { records: out, skipped, failed };
+}
+function collapsedImports(oldRows, archiveRows) {
+  const archive = Array.isArray(archiveRows) ? archiveRows : [], legacyIds = new Set(archive.map((r) => r?.lvLegacy?.id).filter(Boolean));
+  const byId = new Map(archive.filter((r) => r?.id).map((r) => [r.id, r]));
+  return (Array.isArray(oldRows) ? oldRows : []).filter((old) => {
+    const upstreamId = old?.upstreamArchive?.record?.id;
+    if (typeof old?.id !== "string" || typeof upstreamId !== "string" || legacyIds.has(old.id))
+      return false;
+    const holder = byId.get(upstreamId);
+    return !!holder && holder.migratedFrom === "lumiverse-0.1" && !!holder.lvLegacy?.id && holder.lvLegacy.id !== old.id && !holder.lvLegacy.upstreamId;
+  });
 }
 
 // src/lumiverse/service.js
@@ -720,11 +782,42 @@ function createService(api, { now = () => Date.now() } = {}) {
       return { error: String(e?.message || e), retry: true };
     }
   }
+  async function repairImports(u) {
+    if (await read(u, "repair-edited-imports-1.json"))
+      return null;
+    try {
+      const old = (await api.userStorage.list("records/", u)).filter((p) => /^[\w-]+\.json$/.test(p.replace(/^records\//, "")));
+      const rows = [];
+      for (const p of old) {
+        const r = await read(u, p.startsWith("records/") ? p : "records/" + p);
+        if (r)
+          rows.push(r);
+      }
+      const archive = [];
+      for (const p of await archiveFiles(u)) {
+        const r = await read(u, p);
+        if (r?.id)
+          archive.push(r);
+      }
+      const missing = collapsedImports(rows, archive);
+      const result = migrateRecords(missing, archive.map((r) => ({ id: r.id, content: r.content, lvLegacy: r.lvLegacy })), {});
+      for (const r of result.records)
+        await write(u, fileOf(r.id), r);
+      const done = { at: now(), checked: missing.length, restored: result.records.length };
+      await write(u, "repair-edited-imports-1.json", done);
+      return done;
+    } catch (e) {
+      return { error: String(e?.message || e), retry: true };
+    }
+  }
   const PAGE_BYTES = 2000000;
   async function archiveList(u, { cursor = 0 } = {}) {
     const migration = cursor ? null : await migrate(u);
-    if (!cursor)
+    if (!cursor) {
       await repairSources(u);
+      if (!migration?.retry)
+        await repairImports(u);
+    }
     const files = (await archiveFiles(u)).sort();
     const records = [];
     let size = 0, i = Math.max(0, Number(cursor) || 0);
