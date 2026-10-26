@@ -410,11 +410,14 @@ function collapsedImports(oldRows, archiveRows) {
   const archive = Array.isArray(archiveRows) ? archiveRows : [], legacyIds = new Set(archive.map((r) => r?.lvLegacy?.id).filter(Boolean));
   const byId = new Map(archive.filter((r) => r?.id).map((r) => [r.id, r]));
   return (Array.isArray(oldRows) ? oldRows : []).filter((old) => {
-    const upstreamId = old?.upstreamArchive?.record?.id;
-    if (typeof old?.id !== "string" || typeof upstreamId !== "string" || legacyIds.has(old.id))
+    const upstream = old?.upstreamArchive?.record, upstreamId = upstream?.id;
+    if (typeof old?.id !== "string" || typeof upstreamId !== "string")
       return false;
     const holder = byId.get(upstreamId);
-    return !!holder && holder.migratedFrom === "lumiverse-0.1" && !!holder.lvLegacy?.id && holder.lvLegacy.id !== old.id && !holder.lvLegacy.upstreamId;
+    const firstBuild = !!holder && holder.migratedFrom === "lumiverse-0.1" && !!holder.lvLegacy?.id && !holder.lvLegacy.upstreamId;
+    if (firstBuild && holder.lvLegacy.id === old.id)
+      return typeof upstream.content === "string" && old.content !== upstream.content && holder.content !== old.content;
+    return !legacyIds.has(old.id) && firstBuild && holder.lvLegacy.id !== old.id;
   });
 }
 
@@ -783,7 +786,7 @@ function createService(api, { now = () => Date.now() } = {}) {
     }
   }
   async function repairImports(u) {
-    if (await read(u, "repair-edited-imports-1.json"))
+    if (await read(u, "repair-edited-imports-2.json"))
       return null;
     try {
       const old = (await api.userStorage.list("records/", u)).filter((p) => /^[\w-]+\.json$/.test(p.replace(/^records\//, "")));
@@ -800,11 +803,12 @@ function createService(api, { now = () => Date.now() } = {}) {
           archive.push(r);
       }
       const missing = collapsedImports(rows, archive);
-      const result = migrateRecords(missing, archive.map((r) => ({ id: r.id, content: r.content, lvLegacy: r.lvLegacy })), {});
+      const absent = new Set(missing.map((r) => r.id));
+      const result = migrateRecords(missing, archive.map((r) => ({ id: r.id, content: r.content, lvLegacy: absent.has(r.lvLegacy?.id) ? undefined : r.lvLegacy })), {});
       for (const r of result.records)
         await write(u, fileOf(r.id), r);
       const done = { at: now(), checked: missing.length, restored: result.records.length };
-      await write(u, "repair-edited-imports-1.json", done);
+      await write(u, "repair-edited-imports-2.json", done);
       return done;
     } catch (e) {
       return { error: String(e?.message || e), retry: true };

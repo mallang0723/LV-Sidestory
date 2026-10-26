@@ -24,7 +24,7 @@ test('source-only Spindle installation has both build entry points and the manif
  const manifest=JSON.parse(read('spindle.json'));
  for(const entry of ['backend','frontend']){assert.equal(manifest[`entry_${entry}`],`dist/${entry}.js`);assert.ok(existsSync(new URL(`../src/${entry}.ts`,import.meta.url)));assert.ok(existsSync(new URL(`../dist/${entry}.js`,import.meta.url)));}
  assert.deepEqual(manifest.permissions,['generation','chats','chat_mutation','characters','personas','world_books']);
- assert.equal(manifest.version,'0.2.3');assert.equal(JSON.parse(read('package.json')).version,'0.2.3');
+ assert.equal(manifest.version,'0.2.4');assert.equal(JSON.parse(read('package.json')).version,'0.2.4');
 });
 
 test('the preset feature is gone',()=>{

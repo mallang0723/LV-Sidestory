@@ -200,16 +200,18 @@ export function createService(api,{now=()=>Date.now()}={}){
  // edit (or the original) of an ST import. Add what is missing next to what the archive holds now; nothing in
  // the archive is replaced. Done once: the marker is written after every read and write succeeded.
  async function repairImports(u){
-  if(await read(u,'repair-edited-imports-1.json'))return null;
+  if(await read(u,'repair-edited-imports-2.json'))return null;
   try{
    const old=(await api.userStorage.list('records/',u)).filter(p=>/^[\w-]+\.json$/.test(p.replace(/^records\//,'')));
    const rows=[];for(const p of old){const r=await read(u,p.startsWith('records/')?p:'records/'+p);if(r)rows.push(r);}
    const archive=[];for(const p of await archiveFiles(u)){const r=await read(u,p);if(r?.id)archive.push(r);}
    const missing=collapsedImports(rows,archive);
-   const result=migrateRecords(missing,archive.map(r=>({id:r.id,content:r.content,lvLegacy:r.lvLegacy})),{});
+   // A record that only names a missing edit (the first build's snapshot) is not that edit's own record.
+   const absent=new Set(missing.map(r=>r.id));
+   const result=migrateRecords(missing,archive.map(r=>({id:r.id,content:r.content,lvLegacy:absent.has(r.lvLegacy?.id)?undefined:r.lvLegacy})),{});
    for(const r of result.records)await write(u,fileOf(r.id),r);
    const done={at:now(),checked:missing.length,restored:result.records.length};
-   await write(u,'repair-edited-imports-1.json',done);return done;
+   await write(u,'repair-edited-imports-2.json',done);return done;
   }catch(e){return {error:String(e?.message||e),retry:true};}
  }
  const PAGE_BYTES=2_000_000;

@@ -155,9 +155,13 @@ export function collapsedImports(oldRows,archiveRows){
  const archive=Array.isArray(archiveRows)?archiveRows:[],legacyIds=new Set(archive.map(r=>r?.lvLegacy?.id).filter(Boolean));
  const byId=new Map(archive.filter(r=>r?.id).map(r=>[r.id,r]));
  return (Array.isArray(oldRows)?oldRows:[]).filter(old=>{
-  const upstreamId=old?.upstreamArchive?.record?.id;
-  if(typeof old?.id!=='string'||typeof upstreamId!=='string'||legacyIds.has(old.id))return false;
+  const upstream=old?.upstreamArchive?.record,upstreamId=upstream?.id;
+  if(typeof old?.id!=='string'||typeof upstreamId!=='string')return false;
   const holder=byId.get(upstreamId);
-  return !!holder&&holder.migratedFrom==='lumiverse-0.1'&&!!holder.lvLegacy?.id&&holder.lvLegacy.id!==old.id&&!holder.lvLegacy.upstreamId;
+  const firstBuild=!!holder&&holder.migratedFrom==='lumiverse-0.1'&&!!holder.lvLegacy?.id&&!holder.lvLegacy.upstreamId;
+  // The first build converted a 0.1.x edit as an ST snapshot too: the record under the upstream id then names the
+  // edit (lvLegacy.id) but carries the original text, so the edit's own text exists only in records/.
+  if(firstBuild&&holder.lvLegacy.id===old.id)return typeof upstream.content==='string'&&old.content!==upstream.content&&holder.content!==old.content;
+  return !legacyIds.has(old.id)&&firstBuild&&holder.lvLegacy.id!==old.id;
  });
 }

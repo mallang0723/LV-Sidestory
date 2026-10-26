@@ -176,12 +176,14 @@ test('a write failure on the edit after the parent was renamed, then a resume, k
 });
 
 // ---- review C2-R2: an import collapsed by the first 0.2.0 build gets its edit back, once
-const collapsedStorage=({winner='lv-import'}={})=>{
+const collapsedStorage=({winner='lv-import',stale=false}={})=>{
  const {parent,edit}=importedPair();
  const won=winner==='lv-import'?parent:edit;
  const storage=Object.fromEntries([parent,edit].map(r=>['records/'+r.id+'.json',JSON.stringify(r)]));
  // What the first 0.2.0 build left behind: one record under the upstream id (no lvLegacy.upstreamId), and a completion marker.
- storage['archive/st-original.json']=JSON.stringify({...structuredClone(parent.upstreamArchive.record),content:won.content,chatId:'chat-1',migratedFrom:'lumiverse-0.1',lvLegacy:{id:won.id,host:{chatId:'chat-1'},needsRemap:false,stChatId:''}});
+ // stale: the real first build converted the edit as an ST snapshot too, so the record that holds the upstream id
+ // says lvLegacy.id=lv-edited but carries the ORIGINAL text; the edit's own text is only in records/.
+ storage['archive/st-original.json']=JSON.stringify({...structuredClone(parent.upstreamArchive.record),content:stale?parent.upstreamArchive.record.content:won.content,chatId:'chat-1',migratedFrom:'lumiverse-0.1',lvLegacy:{id:won.id,host:{chatId:'chat-1'},needsRemap:false,stChatId:''}});
  storage['migration-0.2.0.json']=JSON.stringify({version:'0.2.0',found:2,migrated:1,skipped:1,failed:0});
  return storage;
 };
@@ -194,7 +196,7 @@ test('an edited import missing since the first 0.2.0 build is restored next to t
  const original=page.records.find(r=>r.id==='st-original'),edited=page.records.find(r=>r.id==='lv-edited');
  assert.equal(original.content,'ST ORIGINAL');
  assert.equal(edited.content,'USER EDIT');assert.equal(edited.action,'edit');assert.equal(edited.parentId,'st-original');
- assert.ok(api.storage.has('repair-edited-imports-1.json'));
+ assert.ok(api.storage.has('repair-edited-imports-2.json'));
  // idempotent, and the user's own changes afterwards are not undone
  const kept=JSON.parse(api.storage.get('archive/st-original.json'));kept.content='EDITED LATER';kept.title='mine';api.storage.set('archive/st-original.json',JSON.stringify(kept));
  await service.handle('u1','archiveDelete',{ids:['lv-edited']});
@@ -217,7 +219,7 @@ test('records migrated by the fixed builds are not “restored” again after th
  const service=createService(api);
  assert.equal((await service.handle('u1','archiveList',{})).records.length,2);
  await service.handle('u1','archiveDelete',{ids:['lv-edited']});
- api.storage.delete('repair-edited-imports-1.json'); // even if the repair ran again, nothing marks this as collapsed
+ api.storage.delete('repair-edited-imports-2.json'); // even if the repair ran again, nothing marks this as collapsed
  assert.deepEqual((await service.handle('u1','archiveList',{})).records.map(r=>r.id),['st-original']);
 });
 
@@ -225,6 +227,34 @@ test('the collapsed-import repair is retried after a read error and leaves no ma
  const api=createFakeSpindle({storage:collapsedStorage()});
  const list=api.userStorage.list;let fail=true;api.userStorage.list=async(prefix,...a)=>{if(prefix==='records/'&&fail){fail=false;throw Error('synthetic list error');}return list(prefix,...a);};
  const service=createService(api);
- assert.equal((await service.handle('u1','archiveList',{})).records.length,1);assert.ok(!api.storage.has('repair-edited-imports-1.json'));
- assert.equal((await service.handle('u1','archiveList',{})).records.length,2);assert.ok(api.storage.has('repair-edited-imports-1.json'));
+ assert.equal((await service.handle('u1','archiveList',{})).records.length,1);assert.ok(!api.storage.has('repair-edited-imports-2.json'));
+ assert.equal((await service.handle('u1','archiveList',{})).records.length,2);assert.ok(api.storage.has('repair-edited-imports-2.json'));
+});
+
+test('an edit that was migrated first by the first 0.2.0 build (holder carries the original text) is recovered as its own record (review C2-R2)',async()=>{
+ const storage=collapsedStorage({winner:'lv-edited',stale:true});
+ const api=createFakeSpindle({storage});
+ const page=await createService(api).handle('u1','archiveList',{});
+ const held=page.records.find(r=>r.id==='st-original');
+ assert.equal(held.content,'ST ORIGINAL','the record already in the archive is untouched');
+ const edited=page.records.find(r=>r.id==='lv-edited');
+ assert.ok(edited,'the edit comes back');assert.equal(edited.content,'USER EDIT');assert.equal(edited.action,'edit');
+ const parent=page.records.find(r=>r.id===edited.parentId);
+ assert.ok(parent&&parent.content==='ST ORIGINAL','linked to a restored original');
+ assert.equal(page.records.length,3);
+ assert.ok(api.storage.has('repair-edited-imports-2.json'));
+ // once: deleting the recovered edit does not bring it back
+ await createService(api).handle('u1','archiveDelete',{ids:['lv-edited']});
+ assert.ok(!(await createService(api).handle('u1','archiveList',{})).records.some(r=>r.id==='lv-edited'));
+});
+
+test('a device that already ran the 0.2.3 repair (original restored, edit still missing) also gets the edit back (review C2-R2)',async()=>{
+ const storage=collapsedStorage({winner:'lv-edited',stale:true});
+ const {parent}=importedPair();
+ storage['archive/lv-import.json']=JSON.stringify({...structuredClone(parent.upstreamArchive.record),id:'lv-import',content:'ST ORIGINAL',chatId:'chat-1',migratedFrom:'lumiverse-0.1',lvLegacy:{id:'lv-import',upstreamId:'st-original',host:{chatId:'chat-1'}}});
+ storage['repair-edited-imports-1.json']=JSON.stringify({checked:1,restored:1});
+ const page=await createService(createFakeSpindle({storage})).handle('u1','archiveList',{});
+ assert.equal(page.records.length,3);
+ const edited=page.records.find(r=>r.id==='lv-edited');
+ assert.equal(edited.content,'USER EDIT');assert.equal(edited.parentId,'lv-import');
 });
