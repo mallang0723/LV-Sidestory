@@ -497,9 +497,9 @@ function createService(api, { now = () => Date.now() } = {}) {
       for (const b of characterWorldBooks(c))
         ids.add(b);
     }
-    const persona2 = await activePersona(u, personaId);
-    if (persona2?.attached_world_book_id)
-      ids.add(persona2.attached_world_book_id);
+    const persona = await activePersona(u, personaId);
+    if (persona?.attached_world_book_id)
+      ids.add(persona.attached_world_book_id);
     for (const b of Array.isArray(chat?.metadata?.chat_world_book_ids) ? chat.metadata.chat_world_book_ids : [])
       if (typeof b === "string")
         ids.add(b);
@@ -510,9 +510,9 @@ function createService(api, { now = () => Date.now() } = {}) {
     return [...ids];
   }
   async function chatView(u, { chatId, personaId }) {
-    const chat = await ownChat(u, chatId), persona2 = await activePersona(u, personaId);
+    const chat = await ownChat(u, chatId), persona = await activePersona(u, personaId);
     const summary = typeof chat.metadata?.loom_summary === "string" ? chat.metadata.loom_summary : "";
-    return { id: chat.id, name: chat.name || "\uD604\uC7AC \uCC44\uD305", mode: "roleplay", connectionId: CURRENT, characterIds: characterIdsOf(chat), personaId: persona2?.id || "", metadata: { summary, activeLorebookIds: await linkedBooks(u, chat, persona2?.id) } };
+    return { id: chat.id, name: chat.name || "\uD604\uC7AC \uCC44\uD305", mode: "roleplay", connectionId: CURRENT, characterIds: characterIdsOf(chat), personaId: persona?.id || "", metadata: { summary, activeLorebookIds: await linkedBooks(u, chat, persona?.id) } };
   }
   async function connections(u, { activeProfileId } = {}) {
     const list = await api.connections.list(u);
@@ -565,7 +565,7 @@ function createService(api, { now = () => Date.now() } = {}) {
     return (await api.chat.getMessages(chatId)).map(messageRow);
   }
   async function modelOf(u, connectionId, activeProfileId) {
-    const cid = connectionId === CURRENT ? activeProfileId || (await api.connections.list(u)).find((c2) => c2.is_default)?.id : connectionId;
+    const cid = connectionId === CURRENT ? activeProfileId || (await api.connections.list(u)).find((c) => c.is_default)?.id : connectionId;
     if (!cid)
       throw Error("\uB8E8\uBBF8\uBC84\uC2A4\uC758 API \uC5F0\uACB0\uC744 \uC124\uC815\uD574 \uC8FC\uC138\uC694.");
     const c = await api.connections.get(id(cid), u);
@@ -613,7 +613,7 @@ function createService(api, { now = () => Date.now() } = {}) {
       const who = chat ? await names(u, chat, personaId) : {};
       const maxTokens = Math.max(16, Math.min(200000, Math.round(Number(payload.parameters?.maxTokens) || 4096)));
       const { connectionId, model, name } = await modelOf(u, payload.connectionId || CURRENT, activeProfileId);
-      let messages2, parameters = { max_tokens: maxTokens }, history = null, meta = { connectionId, model, connectionName: name, requestedMaxTokens: maxTokens };
+      let messages, parameters = { max_tokens: maxTokens }, history = null, meta = { connectionId, model, connectionName: name, requestedMaxTokens: maxTokens };
       if (payload.useSillyTavernContext && payload.connectionId === CURRENT) {
         if (!chat)
           throw Error("\uD604\uC7AC \uCC44\uD305\uC5D0\uC11C \uB2E4\uC2DC \uC2DC\uC791\uD574 \uC8FC\uC138\uC694.");
@@ -625,7 +625,7 @@ function createService(api, { now = () => Date.now() } = {}) {
         const shaped = shapeHostPrompt({ dryRun: dry, source, plan: payload.history || null, quietPrompt: quiet, auxiliaryTurns: (payload.auxiliaryTurns || []).map((m) => ({ role: m.role, content: fillNames(m.content, who) })), selectedLoreOnly: !!payload.selectedLoreOnly });
         if (shaped.blocked)
           throw Error(shaped.blocked);
-        messages2 = shaped.messages;
+        messages = shaped.messages;
         history = payload.history ? shaped.report : null;
         const { stream: _s, max_tokens: _m, ...rest } = dry.parameters && typeof dry.parameters === "object" ? dry.parameters : {};
         parameters = { ...rest, max_tokens: maxTokens };
@@ -633,19 +633,19 @@ function createService(api, { now = () => Date.now() } = {}) {
       } else {
         if (!Array.isArray(payload.messages) || !payload.messages.length)
           throw Error("\uBCF4\uB0BC \uBA54\uC2DC\uC9C0\uAC00 \uC5C6\uC5B4\uC694.");
-        messages2 = payload.messages.map((m) => ({ role: ["system", "user", "assistant"].includes(m?.role) ? m.role : "user", content: fillNames(text(String(m?.content ?? "")), who) }));
+        messages = payload.messages.map((m) => ({ role: ["system", "user", "assistant"].includes(m?.role) ? m.role : "user", content: fillNames(text(String(m?.content ?? "")), who) }));
       }
       if (payload.previewOnly)
-        return { preview: true, text: "", finalPrompt: messages2, history, meta: { ...meta, preview: true } };
+        return { preview: true, text: "", finalPrompt: messages, history, meta: { ...meta, preview: true } };
       if (!model)
         throw Error("\uC5F0\uACB0 \uD504\uB85C\uD544\uC5D0 \uBAA8\uB378\uC774 \uC9C0\uC815\uB418\uC9C0 \uC54A\uC558\uC5B4\uC694. \uB8E8\uBBF8\uBC84\uC2A4 \uC5F0\uACB0 \uC124\uC815\uC5D0\uC11C \uBAA8\uB378\uC744 \uACE8\uB77C \uC8FC\uC138\uC694.");
-      const result = await api.generate.raw({ type: "raw", userId: u, messages: messages2, connection_id: connectionId, model, parameters, signal: controller.signal });
+      const result = await api.generate.raw({ type: "raw", userId: u, messages, connection_id: connectionId, model, parameters, signal: controller.signal });
       if (controller.signal.aborted)
         throw Object.assign(Error("\uC911\uB2E8\uB428"), { name: "AbortError" });
       const content = typeof result === "string" ? result : result?.content;
       if (typeof content !== "string")
         throw Error("\uB8E8\uBBF8\uBC84\uC2A4\uC5D0\uC11C \uD14D\uC2A4\uD2B8 \uACB0\uACFC\uB97C \uBC1B\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-      return { text: content, finalPrompt: messages2, history, meta };
+      return { text: content, finalPrompt: messages, history, meta };
     } finally {
       runs.delete(runId);
     }
@@ -697,12 +697,12 @@ function createService(api, { now = () => Date.now() } = {}) {
       try {
         const chat = await api.chats.get(cid, u);
         const list = [];
-        for (const id2 of characterIdsOf(chat)) {
-          const c = await api.characters.get(id2, u).catch(() => {
+        for (const id of characterIdsOf(chat)) {
+          const c = await api.characters.get(id, u).catch(() => {
             complete = false;
             return null;
           });
-          list.push({ id: id2, name: c?.name || "" });
+          list.push({ id, name: c?.name || "" });
         }
         byChat.set(cid, list);
       } catch {
@@ -710,14 +710,14 @@ function createService(api, { now = () => Date.now() } = {}) {
         complete = false;
       }
     }
-    let personas2 = [];
+    let personas = [];
     try {
-      personas2 = (await allPages((o) => api.personas.list({ ...o, userId: u }))).map((p) => ({ id: p.id, name: p.name || "" }));
+      personas = (await allPages((o) => api.personas.list({ ...o, userId: u }))).map((p) => ({ id: p.id, name: p.name || "" }));
     } catch {
-      personas2 = [];
+      personas = [];
       complete = false;
     }
-    return { chatCharacters: (cid) => byChat.get(cid) || [], personas: personas2, complete };
+    return { chatCharacters: (cid) => byChat.get(cid) || [], personas, complete };
   }
   async function repairSources(u) {
     if (await read(u, "repair-identity-sources-1.json"))

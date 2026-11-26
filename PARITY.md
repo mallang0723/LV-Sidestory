@@ -1,8 +1,8 @@
-# 원작 대비 빌드 패치 — 0.2.5-v1
+# 원작 대비 빌드 패치 — 0.2.5
 
 `upstream/`는 `UPSTREAM.json`에 고정한 ST-Sidestory 0.17.0 원본입니다. SHA-256과 git blob SHA-1 검사는 `npm run verify:original` 및 `npm test`에서 실행합니다. 원본은 수정하지 않고 `src/lumiverse/patches.mjs`의 앵커를 빌드 중에만 치환합니다. 앵커가 없거나 개수가 달라지면 빌드를 중단합니다.
 
-## 0.2.5-v1 UUID 호환 패치
+## 0.2.5 UUID 호환 패치
 
 | 원작 위치 | 변경 | 적용 범위 |
 |---|---|---|
@@ -17,7 +17,7 @@
 
 ## 기존 패치와 이식 범위
 
-- `core.js`: 화면 버전을 `LV 0.2.5-v1 · ST 0.17.0`으로 표시합니다.
+- `core.js`: 화면 버전을 `LV 0.2.5 · ST 0.17.0`으로 표시합니다.
 - `extension.js`: 임베디드 서랍에서 문서 전체 키 입력을 가로채지 않습니다.
 - 문구 치환 15건: `extension.js` 1건, `generation.js` 4건, `design.js` 1건, `shell.js` 5건, `compact.js` 2건, `extras-ui.js` 1건, `extras.js` 1건. 호스트·연결·로어북 안내를 Lumiverse 용어로 바꿉니다.
 

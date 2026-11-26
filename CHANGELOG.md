@@ -1,6 +1,6 @@
 # 변경 내역
 
-## 0.2.5-v1
+## 0.2.5
 
 - Lumiverse 1.3.0에서 확장 시작을 막던 프런트엔드의 직접 UUID API 접근을 제거했습니다. 공용 헬퍼가 `ctx.uuid.v4()`를 우선 사용하며, API가 없는 1.2.5 개발 빌드에서는 `crypto.getRandomValues`로 RFC 4122 v4를 만듭니다(HTTP/LAN 지원).
 - 원작의 일반 ID·HTML 화면 캡처 ID 두 곳은 빌드 앵커 패치로 연결했습니다. `upstream/` 원본은 바꾸지 않았습니다.

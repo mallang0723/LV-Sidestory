@@ -8,7 +8,7 @@
 // src/lumiverse/ (host adapter, prelude shims, glue, style overrides) without touching upstream.
 export const PATCHES=[
  {file:'core.js',kind:'behavior',why:'버전 표시: 이식판 버전과 원작 버전을 함께 보여 줌',
-  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.5-v1 · ST 0.17.0'"},
+  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.5 · ST 0.17.0'"},
  {file:'transport.js',kind:'behavior',why:'Lumiverse 1.3.0 시작 검사 및 HTTP/LAN 호환: 원작 ID를 컨텍스트가 연결된 공용 헬퍼로 생성',
   find:'const uuid = () => globalThis.crypto?.randomUUID?.() || `b-${Date.now()}-${Math.random().toString(36).slice(2)}`;',
   replace:'const uuid = () => stHost.uuid();'},
