@@ -2,6 +2,8 @@
 
 # Side Story (사이드 스토리)
 
+현재 버전: **0.2.5-v1**. Lumiverse 1.3.0의 프런트엔드 시작 검사에 대응하며, 1.2.5 개발 빌드와 HTTP/LAN에서도 UUID를 생성합니다.
+
 Side Story는 지금 채팅을 바탕으로 외전 스토리·분석·내면(말하기·쓰기)·HTML·AU 프로필을 만들고, 본편과 따로 보관하는 Lumiverse 확장입니다. 0.2.0부터는 **SillyTavern용 원작 ST-Sidestory 0.17.0의 코드를 거의 그대로 가져와** 루미버스 호스트 어댑터 위에서 돌립니다. 원작 작가들이 마리나라판(이면 · SIDE B)을 만들 때처럼, 원작의 `src/`는 그대로 두고 호스트와 맞닿는 부분(`st-host.js`)만 루미버스용으로 바꿨습니다.
 
 Lumiverse 공식 확장이 아니며, Lumiverse 팀이 만들거나 승인·보증·지원하는 확장이 아닙니다. 실제 모델 응답 품질은 검증하지 않았습니다.
@@ -80,7 +82,7 @@ Lumiverse 확장 설치에서 GitHub 주소 `https://github.com/mallang0723/LV-S
 - `npm run qa:chat`: 호스트가 열린 채팅을 알리는 여러 방식(늦은 알림, 탭 전환 없는 서랍 열기, 알림 없음, 대체 API)에서 이면이 채팅을 찾아 열리는지 같은 http 주소에서 Firefox·Chromium으로 검사합니다.
 - `npm run qa:insecure`: localhost가 아닌 http 주소(보안 컨텍스트 아님, 휴대폰에서 Tailscale로 여는 경우)에서 Firefox·Chromium으로 열어 연결 목록과 생성이 되는지 검사합니다(`PLAYWRIGHT_MODULE`, `FIREFOX_BIN`으로 지정).
 
-자세한 검증 범위는 [QA.md](QA.md), 변경 내역은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
+원작 대비 패치는 [PARITY.md](PARITY.md), 자세한 검증 범위는 [QA.md](QA.md), 변경 내역은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
 
 ## 원작과 이식 허가
 

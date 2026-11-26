@@ -1,6 +1,6 @@
 // Frontend ↔ backend request/response over the Spindle message channel.
 import {uuid as randomId} from './ids.js';
-export function createRpc(ctx,{timeout=120000,uuid=randomId}={}){
+export function createRpc(ctx,{timeout=120000,uuid=()=>randomId(ctx)}={}){
  const pending=new Map();let closed=false;
  const off=ctx.onBackendMessage(m=>{
   const p=pending.get(m?.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);

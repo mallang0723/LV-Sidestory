@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync,readFileSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {buildApp} from '../scripts/build-app.mjs';
 import {PATCHES} from '../src/lumiverse/patches.mjs';
@@ -24,7 +24,28 @@ test('source-only Spindle installation has both build entry points and the manif
  const manifest=JSON.parse(read('spindle.json'));
  for(const entry of ['backend','frontend']){assert.equal(manifest[`entry_${entry}`],`dist/${entry}.js`);assert.ok(existsSync(new URL(`../src/${entry}.ts`,import.meta.url)));assert.ok(existsSync(new URL(`../dist/${entry}.js`,import.meta.url)));}
  assert.deepEqual(manifest.permissions,['generation','chats','chat_mutation','characters','personas','world_books']);
- assert.equal(manifest.version,'0.2.4');assert.equal(JSON.parse(read('package.json')).version,'0.2.4');
+ assert.equal(manifest.version,'0.2.5-v1');assert.equal(JSON.parse(read('package.json')).version,'0.2.5-v1');
+ assert.ok(read('dist/frontend.js').toString().includes('LV '+manifest.version));
+});
+
+// Deliberately stricter than the host: match any receiver (including aliases) and comments.
+// Built frontend code has no reason to mention this property, even in documentation strings.
+const blockedUUIDAccess=/(?:\?\.|\.)\s*randomUUID\b|\[\s*['"`]randomUUID['"`]\s*\]|\{[^{}]*\brandomUUID\b[^{}]*\}\s*=/;
+test('frontend UUID guard catches direct, optional, aliased, bracket, and destructured access',()=>{
+ for(const source of [
+  'crypto.randomUUID()', 'globalThis.crypto?.randomUUID?.()', 'window.crypto["randomUUID"]()',
+  "self.crypto?.['randomUUID']()", 'const c=crypto; c.randomUUID()',
+  'const w=window,c=w.crypto; c?.randomUUID?.()', 'const {crypto:c}=self;c.randomUUID()',
+  'const {randomUUID:id}=crypto;', 'const {"randomUUID":id}=globalThis.crypto;',
+  '// crypto.randomUUID()', 'c == null ? void 0 : c.randomUUID()',
+ ])assert.match(source,blockedUUIDAccess,source);
+ for(const source of ['ctx.uuid.v4()', 'globalThis.crypto.getRandomValues(bytes)'])assert.doesNotMatch(source,blockedUUIDAccess);
+});
+
+test('every built frontend bundle is free of blocked UUID access',()=>{
+ const files=readdirSync(new URL('../dist/',import.meta.url)).filter(f=>/^frontend.*\.js$/.test(f));
+ assert.ok(files.length,'build the frontend before testing');
+ for(const file of files)assert.doesNotMatch(read('dist/'+file).toString(),blockedUUIDAccess,file);
 });
 
 test('the preset feature is gone',()=>{

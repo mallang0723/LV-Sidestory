@@ -1,4 +1,13 @@
-# 검증 범위와 기능 제한 — 0.2.4
+# 검증 범위와 기능 제한 — 0.2.5-v1
+
+## 0.2.5-v1 호환성 검증
+
+- Lumiverse 1.3.0 staging `429fac45`의 실제 `detectDangerousFrontendCapabilities`로 재빌드한 프런트엔드를 검사해 `ok`를 확인했습니다. 번들에 금지 UUID 접근이 남아 있지 않습니다.
+- 기존 빌드와 같은 Bun 1.4.0으로 `dist/`를 재빌드했습니다. 백엔드 산출물은 변경 전과 바이트 단위로 같습니다. `package.json`·`spindle.json`·README·화면 버전은 `0.2.5-v1`입니다.
+- `npm test`: 58개 검사 통과. 호스트 UUID API 우선 사용·컨텍스트 전달·호스트 종료 오류 전달, API 없는 구버전 및 비보안 컨텍스트 대체 경로, RFC 4122 v4 비트·형식, 빌드된 `dist/frontend*.js`의 금지 접근 회귀 검사를 포함합니다. 새 번들 검사는 수정 전 번들에서 실패했습니다.
+- `npm run check:app`으로 생성 파일과 앵커 패치를 확인합니다. `npm run verify:original`은 원본 전체의 SHA-256·git blob SHA-1을 확인합니다.
+- 원작에 추가한 UUID 앵커 패치 2건과 전체 패치 목록은 [PARITY.md](PARITY.md)에 있습니다. 원본·저작자·크레딧·NOTICE는 보존했습니다.
+- 이번 검증은 로컬 빌드·단위 검사·실제 호스트 정적 검사입니다. 브라우저 QA·실제 호스트 설치·모델 호출은 재실행하지 않았습니다. 아래 기록은 이전 버전 검증 이력입니다.
 
 0.2.0은 원작 ST-Sidestory 0.17.0(727099430bb6)을 원본 그대로 묶고 루미버스 어댑터로 연결한 버전입니다. 아래는 2026-10-21 로컬 검증 결과입니다. 실제 Lumiverse 호스트 설치, 실제 프리셋으로 조립한 프롬프트, 실제 모델 응답, 실제 휴대폰은 이번에 확인하지 않았습니다.
 
@@ -28,7 +37,7 @@
   - **고친 문제(실기기 Firefox for Android에서 보고):** 보관함에서 인물 추출(AU 1/2 단계) 아티클을 열면 내용이 전혀 스크롤되지 않았습니다. 원작은 이 화면에서 `#reader` 안에 `overflow:auto` + `overscroll-behavior:contain` 상자 두 개(`.facet-plan-preview`, 그 안의 `.facet-plan-scroll`)를 더 겹쳐 두는데, 높이가 정해지지 않아 스스로는 스크롤할 것이 없으면서도 스크롤 영역이라 터치·휠을 받아 버리고 `contain` 때문에 바깥 `#reader`로 넘기지 않습니다. 고치기 전 빌드로 같은 검사를 돌리면 Chromium은 휠·터치 모두 0px, Firefox도 막는 상자를 감지했고, 고친 뒤에는 모두 통과합니다. 수정은 `src/lumiverse/style.css`에서 두 상자를 일반 상자로 바꿔 `#reader` 하나만 스크롤하게 한 것입니다(원작 파일 수정 없음). 서랍 대역의 스크롤 구조(`panelContent`: overflow-y auto, `.panel`: overflow hidden, 탭 뿌리 높이 100%)는 루미버스 `ViewportDrawer.module.css`·`TabPanelContent.tsx`를 따라 만들었습니다.
 
 - `npm run qa:insecure` — 통과(0.2.1; 0.2.4에서 다시 실행해 통과). Playwright로 Chromium·Firefox에서 서랍 대역을 `http://sidestory.test:<포트>`(localhost가 아닌 http 주소, 로컬 QA 서버로 이름만 연결)로 엽니다. 휴대폰이 Tailscale로 PC의 루미버스에 `http://100.x.y.z`로 붙는 경우와 같은 **보안 컨텍스트가 아닌 페이지**입니다. 페이지 안에서 `isSecureContext===false`이고 `crypto.randomUUID`·`crypto.subtle`·`navigator.clipboard`·`navigator.storage`가 없는 것을 먼저 확인한 뒤, 설정 → 연결에서 생성용 연결 목록(메인·번역 연결)이 뜨는지, 스토리 생성이 끝까지 되는지, 오류·화면 알림에 `randomUUID`가 없는지 봅니다. 같은 검사를 0.2.0 빌드(1d7b155)에 돌리면 두 브라우저 모두 “설정 저장 실패: crypto.randomUUID is not a function”과 연결 목록 미표시로 실패합니다.
-  - **고친 문제(실기기 보고): 휴대폰에서 Tailscale 주소(http)로 열면 이면 탭 곳곳과 AI 연결 불러오기에 “crypto.randomUUID is not a function”이 뜨고 연결 목록이 안 뜸.** `crypto.randomUUID`는 HTTPS나 localhost에서만 있습니다. 어댑터의 요청 ID(`src/lumiverse/rpc.js`)와 생성 실행 ID(`src/lumiverse/host.js`)가 이것을 그대로 불러 모든 서버 요청이 실패했습니다. 이제 `src/lumiverse/ids.js`가 `crypto.randomUUID` → `crypto.getRandomValues`(보안 컨텍스트가 아니어도 있음)로 만든 RFC 4122 v4 → `Math.random` 순으로 ID를 만듭니다. 원작 코드의 ID 생성은 원래 대체 경로가 있어 그대로 둡니다. 빌드된 `dist/frontend.js`의 `randomUUID`는 모두 존재 검사 뒤에서만 불립니다. 다른 보안 컨텍스트 전용 API는 원작의 복사 버튼(`navigator.clipboard`, try/catch로 “클립보드 권한이 없어요” 안내)뿐이고 `crypto.subtle`·`navigator.storage`·`navigator.share`는 쓰지 않습니다.
+  - **고친 문제(실기기 보고): 휴대폰에서 Tailscale 주소(http)로 열면 이면 탭 곳곳과 AI 연결 불러오기에 “crypto.randomUUID is not a function”이 뜨고 연결 목록이 안 뜸.** `crypto.randomUUID`는 HTTPS나 localhost에서만 있습니다. 어댑터의 요청 ID(`src/lumiverse/rpc.js`)와 생성 실행 ID(`src/lumiverse/host.js`)가 이것을 그대로 불러 모든 서버 요청이 실패했습니다. 당시 `src/lumiverse/ids.js`가 `crypto.randomUUID` → `crypto.getRandomValues`(보안 컨텍스트가 아니어도 있음)로 만든 RFC 4122 v4 → `Math.random` 순으로 ID를 만듭니다. 당시에는 원작의 ID 생성과 조건부 직접 접근을 남겼으나, 0.2.5-v1에서는 시작 검사 호환을 위해 모두 제거했습니다. 다른 보안 컨텍스트 전용 API는 원작의 복사 버튼(`navigator.clipboard`, try/catch로 “클립보드 권한이 없어요” 안내)뿐이고 `crypto.subtle`·`navigator.storage`·`navigator.share`는 쓰지 않습니다.
   - 단위 검사: `crypto.randomUUID`를 없앤 Node에서 rpc 요청·연결 목록·생성이 되고 ID가 v4 형식이며 겹치지 않는지, `getRandomValues`까지 없앨 때도 v4 ID가 나오는지.
   - 0.2.2·0.2.4에서 다시 실행해 통과.
 

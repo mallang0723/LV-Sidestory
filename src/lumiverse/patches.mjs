@@ -8,7 +8,13 @@
 // src/lumiverse/ (host adapter, prelude shims, glue, style overrides) without touching upstream.
 export const PATCHES=[
  {file:'core.js',kind:'behavior',why:'버전 표시: 이식판 버전과 원작 버전을 함께 보여 줌',
-  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.4 · ST 0.17.0'"},
+  find:"const VERSION='ST 0.17.0'",replace:"const VERSION='LV 0.2.5-v1 · ST 0.17.0'"},
+ {file:'transport.js',kind:'behavior',why:'Lumiverse 1.3.0 시작 검사 및 HTTP/LAN 호환: 원작 ID를 컨텍스트가 연결된 공용 헬퍼로 생성',
+  find:'const uuid = () => globalThis.crypto?.randomUUID?.() || `b-${Date.now()}-${Math.random().toString(36).slice(2)}`;',
+  replace:'const uuid = () => stHost.uuid();'},
+ {file:'renderer.js',kind:'behavior',why:'HTML 화면 캡처 요청 ID도 같은 호스트 UUID 헬퍼 사용',
+  find:"const id=(crypto.randomUUID?.()||Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join(''));",
+  replace:'const id=stHost.uuid();'},
  {file:'extension.js',kind:'behavior',why:'호스트 서랍 안에서는 문서 전체 키 입력을 가로채지 않음 (Side Story 안의 입력은 host 요소에서 그대로 처리)',
   find:"document.addEventListener('keydown',e=>{keydown(e);if(opened)e.stopPropagation();});",
   replace:"if(!stHost.embedded)document.addEventListener('keydown',e=>{keydown(e);if(opened)e.stopPropagation();});"},

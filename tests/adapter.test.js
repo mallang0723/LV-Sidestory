@@ -346,10 +346,45 @@ test('insecure context: without crypto.randomUUID the rpc and host still make id
  assert.equal(typeof crypto.randomUUID,'function','restored');
 });
 
-test('id fallbacks: getRandomValues, then Math.random, both give RFC 4122 v4 strings',async()=>{
+test('older hosts: getRandomValues gives unique RFC 4122 v4 strings',async()=>{
  await withoutWebCrypto(['randomUUID'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
- await withoutWebCrypto(['randomUUID','getRandomValues'],()=>{const ids=Array.from({length:200},uuid);for(const id of ids)assert.match(id,V4);assert.equal(new Set(ids).size,ids.length);});
  assert.match(uuid(),V4);
+});
+
+test('host UUID API is preferred, keeps its receiver, and propagates lifecycle errors',async()=>{
+ await withoutWebCrypto(['randomUUID','getRandomValues'],()=>{
+  const api={v4(){assert.equal(this,api);return '00000000-0000-4000-8000-000000000001';}};
+  assert.equal(uuid({uuid:api}),'00000000-0000-4000-8000-000000000001');
+  const unloaded=Error('Extension unloaded');
+  assert.throws(()=>uuid({uuid:{v4(){throw unloaded;}}}),e=>e===unloaded);
+ });
+});
+
+test('fallback uses 16 random bytes and sets the RFC 4122 version and variant bits',()=>{
+ const saved=Object.getOwnPropertyDescriptor(globalThis,'crypto');
+ const cryptoStub={getRandomValues(bytes){assert.equal(this,cryptoStub);assert.equal(bytes.length,16);bytes.fill(255);return bytes;},get randomUUID(){throw Error('forbidden access');}};
+ Object.defineProperty(globalThis,'crypto',{value:cryptoStub,configurable:true});
+ try{
+  for(const ctx of [undefined,{}, {uuid:{}}, {uuid:{v4:null}}])assert.equal(uuid(ctx),'ffffffff-ffff-4fff-bfff-ffffffffffff');
+ }finally{Object.defineProperty(globalThis,'crypto',saved);}
+});
+
+test('RPC, generation, and the upstream bridge use the setup context UUID API',async()=>{
+ await withoutWebCrypto(['randomUUID','getRandomValues'],async()=>{
+  const w=wire(),sent=[],issued=[];
+  w.ctx.uuid={v4(){const id=`00000000-0000-4000-8000-${String(issued.length+1).padStart(12,'0')}`;issued.push(id);return id;}};
+  const send=w.ctx.sendToBackend;w.ctx.sendToBackend=m=>{sent.push(m);send(m);};
+  const {host,rpc}=makeHost(w);
+  try{
+   assert.equal(host.uuid(),issued.at(-1));
+   await rpc.call('connections',{activeProfileId:'conn-1'});
+   const text=await host.generate({connectionId:'conn-1',messages:[{role:'user',content:'U'}],parameters:{maxTokens:100}},new AbortController().signal);
+   assert.match(text,/생성된 이야기/);
+   assert.ok(issued.includes(sent.find(m=>m.op==='generate').args.runId));
+   for(const m of sent)assert.ok(issued.includes(m.id));
+   assert.equal(new Set(issued).size,issued.length);
+  }finally{host.cleanup();rpc.dispose();w.dispose();}
+ });
 });
 
 test('active chat: a chat restored while upstream was still loading opens on mount (0.2.1 report)',async()=>{
